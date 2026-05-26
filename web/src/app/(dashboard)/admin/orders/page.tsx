@@ -65,6 +65,16 @@ type OrderMaterial = {
 
 type Material = { id: string; name: string; unit: string }
 
+type CreateActivityProduct = {
+  id: string; product_id: string; custom_price: number; stock_limit: number | null
+  products: { name: string }
+}
+
+type CreateDeliveryMethod = {
+  id: string; delivery_method_id: string; custom_fee: number | null
+  delivery_methods: { name: string; default_fee: number }
+}
+
 const orderStatusOptions = [
   { value: 'pending',    label: '待處理', variant: 'outline' },
   { value: 'confirmed',  label: '已確認', variant: 'secondary' },
@@ -100,6 +110,16 @@ export default function OrdersPage() {
   const [materialForm, setMaterialForm] = useState({ material_id: '', quantity: '1', notes: '' })
   const [addingMaterial, setAddingMaterial] = useState(false)
   const [materialSaving, setMaterialSaving] = useState(false)
+
+  // 新增訂單
+  const [createDialogOpen, setCreateDialogOpen] = useState(false)
+  const [createActivityId, setCreateActivityId] = useState('')
+  const [createProducts, setCreateProducts] = useState<CreateActivityProduct[]>([])
+  const [createDeliveryMethods, setCreateDeliveryMethods] = useState<CreateDeliveryMethod[]>([])
+  const [createQuantities, setCreateQuantities] = useState<Record<string, number>>({})
+  const [createDeliveryId, setCreateDeliveryId] = useState('')
+  const [createCustomer, setCreateCustomer] = useState({ name: '', phone: '', email: '', address: '', notes: '' })
+  const [createSaving, setCreateSaving] = useState(false)
 
   // 篩選
   const [filterActivity, setFilterActivity] = useState('all')
@@ -184,6 +204,80 @@ export default function OrdersPage() {
     fetchOrders()
   }, [filterActivity, filterStatus])
 
+  // 新增訂單
+  const openCreate = () => {
+    setCreateDialogOpen(true)
+    setCreateActivityId('')
+    setCreateProducts([])
+    setCreateDeliveryMethods([])
+    setCreateQuantities({})
+    setCreateDeliveryId('')
+    setCreateCustomer({ name: '', phone: '', email: '', address: '', notes: '' })
+  }
+
+  const fetchActivityData = async (activityId: string) => {
+    const [{ data: prods }, { data: dms }] = await Promise.all([
+      supabase.from('activity_products')
+        .select('id, product_id, custom_price, stock_limit, products(name)')
+        .eq('activity_id', activityId).order('sort_order'),
+      supabase.from('activity_delivery_methods')
+        .select('id, delivery_method_id, custom_fee, delivery_methods(name, default_fee)')
+        .eq('activity_id', activityId),
+    ])
+    if (prods) setCreateProducts(prods as unknown as CreateActivityProduct[])
+    if (dms) setCreateDeliveryMethods(dms as unknown as CreateDeliveryMethod[])
+    setCreateQuantities({})
+    setCreateDeliveryId('')
+  }
+
+  const handleCreateOrder = async () => {
+    if (!createCustomer.name.trim() || !createCustomer.phone.trim() || !createDeliveryId || !createActivityId) return
+    const selectedDm = createDeliveryMethods.find(d => d.id === createDeliveryId)
+    const deliveryFee = selectedDm?.custom_fee ?? selectedDm?.delivery_methods.default_fee ?? 0
+    const subtotal = createProducts.reduce((s, ap) => s + (createQuantities[ap.product_id] ?? 0) * ap.custom_price, 0)
+    const total = subtotal + deliveryFee
+    setCreateSaving(true)
+    const { data: orderData, error: orderErr } = await supabase.from('orders').insert({
+      activity_id: createActivityId,
+      customer_name: createCustomer.name.trim(),
+      customer_phone: createCustomer.phone.trim(),
+      customer_email: createCustomer.email.trim() || null,
+      customer_address: createCustomer.address.trim() || null,
+      delivery_method_id: selectedDm?.delivery_method_id,
+      delivery_fee: deliveryFee,
+      subtotal, total,
+      notes: createCustomer.notes.trim() || null,
+      order_status: 'pending',
+      payment_status: 'unpaid',
+    }).select().single()
+    if (orderErr || !orderData) {
+      alert('建立失敗：' + (orderErr?.message ?? '未知錯誤'))
+      setCreateSaving(false)
+      return
+    }
+    const items = createProducts.filter(ap => (createQuantities[ap.product_id] ?? 0) > 0).map(ap => ({
+      order_id: orderData.id,
+      product_id: ap.product_id,
+      product_name: ap.products.name,
+      quantity: createQuantities[ap.product_id],
+      unit_price: ap.custom_price,
+      subtotal: createQuantities[ap.product_id] * ap.custom_price,
+    }))
+    if (items.length > 0) await supabase.from('order_items').insert(items)
+    setCreateSaving(false)
+    setCreateDialogOpen(false)
+    fetchOrders()
+  }
+
+  const deleteOrder = async () => {
+    if (!selectedOrder) return
+    if (!confirm(`確定要刪除「${selectedOrder.customer_name}」的訂單？此操作無法復原。`)) return
+    const { error } = await supabase.from('orders').delete().eq('id', selectedOrder.id)
+    if (error) { alert('刪除失敗：' + error.message); return }
+    setSelectedOrder(null)
+    fetchOrders()
+  }
+
   // 更新訂單
   const updateOrder = async (field: Partial<Order>) => {
     if (!selectedOrder) return
@@ -208,6 +302,7 @@ export default function OrdersPage() {
           <h1 className="text-2xl font-bold">訂單管理</h1>
           <p className="text-gray-500 text-sm mt-1">查看與管理所有訂單</p>
         </div>
+        <Button onClick={openCreate}><Plus className="h-4 w-4 mr-2" />新增訂單</Button>
       </div>
 
       {/* 篩選 */}
@@ -504,10 +599,170 @@ export default function OrdersPage() {
                   </div>
                 )}
               </div>
+
+              {/* 刪除訂單 */}
+              <div className="pt-2 border-t">
+                <Button variant="destructive" size="sm" className="w-full" onClick={deleteOrder}>
+                  <Trash2 className="h-4 w-4 mr-2" />刪除此訂單
+                </Button>
+              </div>
             </div>
           </DialogContent>
         </Dialog>
       )}
+
+      {/* ── 新增訂單 Dialog ────────────────────────────── */}
+      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>新增訂單</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-5 py-2">
+
+            {/* 選擇活動 */}
+            <div className="space-y-2">
+              <Label>活動 *</Label>
+              <Select value={createActivityId} onValueChange={v => {
+                if (!v) return
+                setCreateActivityId(v)
+                fetchActivityData(v)
+              }}>
+                <SelectTrigger>
+                  <SelectValue placeholder="選擇活動">
+                    {createActivityId
+                      ? activities.find(a => a.id === createActivityId)?.name ?? '選擇活動'
+                      : '選擇活動'}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {activities.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* 客戶資料 */}
+            <div className="space-y-3">
+              <p className="text-sm font-semibold text-gray-500">客戶資料</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>姓名 *</Label>
+                  <Input placeholder="客戶姓名" value={createCustomer.name}
+                    onChange={e => setCreateCustomer({ ...createCustomer, name: e.target.value })} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>電話 *</Label>
+                  <Input placeholder="09xx-xxx-xxx" value={createCustomer.phone}
+                    onChange={e => setCreateCustomer({ ...createCustomer, phone: e.target.value })} />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Email</Label>
+                <Input type="email" placeholder="選填" value={createCustomer.email}
+                  onChange={e => setCreateCustomer({ ...createCustomer, email: e.target.value })} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>地址</Label>
+                <Input placeholder="選填" value={createCustomer.address}
+                  onChange={e => setCreateCustomer({ ...createCustomer, address: e.target.value })} />
+              </div>
+            </div>
+
+            {/* 商品選擇 */}
+            {createProducts.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-sm font-semibold text-gray-500">商品</p>
+                <div className="border rounded-lg divide-y">
+                  {createProducts.map(ap => (
+                    <div key={ap.id} className="flex items-center justify-between px-3 py-2.5">
+                      <div>
+                        <span className="text-sm font-medium">{ap.products.name}</span>
+                        <span className="text-xs text-gray-400 ml-2">NT$ {ap.custom_price.toLocaleString()}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button className="w-6 h-6 rounded-full border flex items-center justify-center text-sm hover:bg-gray-100 disabled:opacity-30"
+                          disabled={(createQuantities[ap.product_id] ?? 0) === 0}
+                          onClick={() => setCreateQuantities(prev => ({ ...prev, [ap.product_id]: Math.max(0, (prev[ap.product_id] ?? 0) - 1) }))}>
+                          −
+                        </button>
+                        <span className="w-6 text-center text-sm">{createQuantities[ap.product_id] ?? 0}</span>
+                        <button className="w-6 h-6 rounded-full border flex items-center justify-center text-sm hover:bg-gray-100 disabled:opacity-30"
+                          disabled={ap.stock_limit != null && (createQuantities[ap.product_id] ?? 0) >= ap.stock_limit}
+                          onClick={() => setCreateQuantities(prev => ({ ...prev, [ap.product_id]: Math.min((prev[ap.product_id] ?? 0) + 1, ap.stock_limit ?? Infinity) }))}>
+                          +
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 物流方式 */}
+            {createDeliveryMethods.length > 0 && (
+              <div className="space-y-2">
+                <Label>物流方式 *</Label>
+                <div className="space-y-1.5">
+                  {createDeliveryMethods.map(dm => {
+                    const fee = dm.custom_fee ?? dm.delivery_methods.default_fee
+                    return (
+                      <label key={dm.id}
+                        className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors
+                          ${createDeliveryId === dm.id ? 'border-blue-500 bg-blue-50' : 'hover:bg-gray-50'}`}>
+                        <div className="flex items-center gap-2">
+                          <input type="radio" name="createDelivery" value={dm.id}
+                            checked={createDeliveryId === dm.id}
+                            onChange={() => setCreateDeliveryId(dm.id)} />
+                          <span className="text-sm">{dm.delivery_methods.name}</span>
+                        </div>
+                        <span className="text-sm text-gray-500">{fee === 0 ? '免運' : `NT$ ${fee}`}</span>
+                      </label>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* 備註 */}
+            <div className="space-y-1.5">
+              <Label>備註</Label>
+              <Textarea placeholder="選填" rows={2} value={createCustomer.notes}
+                onChange={e => setCreateCustomer({ ...createCustomer, notes: e.target.value })} />
+            </div>
+
+            {/* 金額小計 */}
+            {createActivityId && (
+              <div className="bg-gray-50 rounded-lg px-4 py-3 space-y-1 text-sm">
+                {(() => {
+                  const subtotal = createProducts.reduce((s, ap) => s + (createQuantities[ap.product_id] ?? 0) * ap.custom_price, 0)
+                  const dm = createDeliveryMethods.find(d => d.id === createDeliveryId)
+                  const fee = dm?.custom_fee ?? dm?.delivery_methods.default_fee ?? 0
+                  return (
+                    <>
+                      <div className="flex justify-between text-gray-500">
+                        <span>商品小計</span><span>NT$ {subtotal.toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between text-gray-500">
+                        <span>運費</span><span>{fee === 0 ? '免運' : `NT$ ${fee}`}</span>
+                      </div>
+                      <div className="flex justify-between font-bold pt-1 border-t">
+                        <span>合計</span><span>NT$ {(subtotal + fee).toLocaleString()}</span>
+                      </div>
+                    </>
+                  )
+                })()}
+              </div>
+            )}
+          </div>
+
+          <div className="flex gap-3 pt-2">
+            <Button variant="outline" className="flex-1" onClick={() => setCreateDialogOpen(false)}>取消</Button>
+            <Button className="flex-1" disabled={createSaving || !createCustomer.name.trim() || !createCustomer.phone.trim() || !createDeliveryId || !createActivityId}
+              onClick={handleCreateOrder}>
+              {createSaving ? '建立中...' : '建立訂單'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
