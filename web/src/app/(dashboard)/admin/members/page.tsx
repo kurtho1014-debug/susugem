@@ -13,7 +13,7 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
-import { Plus, Pencil, Search } from 'lucide-react'
+import { Plus, Pencil, Search, Trash2 } from 'lucide-react'
 
 type Member = {
   id: string
@@ -73,6 +73,13 @@ export default function MembersPage() {
       is_registered: m.is_registered,
     })
     setDialogOpen(true)
+  }
+
+  const handleDelete = async (m: Member) => {
+    if (!confirm(`確定要刪除會員「${m.name}」？此操作無法復原。`)) return
+    const { error } = await supabase.from('members').delete().eq('id', m.id)
+    if (error) alert('刪除失敗：' + error.message)
+    else fetchMembers()
   }
 
   const handleSave = async () => {
@@ -147,9 +154,14 @@ export default function MembersPage() {
                 </TableCell>
                 <TableCell className="text-gray-400">{new Date(m.created_at).toLocaleDateString('zh-TW')}</TableCell>
                 <TableCell>
-                  <Button variant="ghost" size="sm" onClick={() => openEdit(m)}>
-                    <Pencil className="h-4 w-4" />
-                  </Button>
+                  <div className="flex gap-1">
+                    <Button variant="ghost" size="sm" onClick={() => openEdit(m)}>
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => handleDelete(m)}>
+                      <Trash2 className="h-4 w-4 text-red-400" />
+                    </Button>
+                  </div>
                 </TableCell>
               </TableRow>
             ))}

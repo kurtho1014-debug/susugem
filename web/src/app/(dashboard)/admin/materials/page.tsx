@@ -278,7 +278,13 @@ export default function MaterialsPage() {
                 <Label>供應商</Label>
                 <Select value={form.supplier_id}
                   onValueChange={v => setForm({ ...form, supplier_id: v ?? '' })}>
-                  <SelectTrigger><SelectValue placeholder="選擇供應商" /></SelectTrigger>
+                  <SelectTrigger>
+                    <SelectValue>
+                      {form.supplier_id
+                        ? suppliers.find(s => s.id === form.supplier_id)?.name ?? '選擇供應商'
+                        : '不指定'}
+                    </SelectValue>
+                  </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="">不指定</SelectItem>
                     {suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
@@ -289,7 +295,13 @@ export default function MaterialsPage() {
                 <Label>類別</Label>
                 <Select value={form.category_id}
                   onValueChange={v => setForm({ ...form, category_id: v ?? '' })}>
-                  <SelectTrigger><SelectValue placeholder="選擇類別" /></SelectTrigger>
+                  <SelectTrigger>
+                    <SelectValue>
+                      {form.category_id
+                        ? categories.find(c => c.id === form.category_id)?.name ?? '選擇類別'
+                        : '不指定'}
+                    </SelectValue>
+                  </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="">不指定</SelectItem>
                     {categories.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}

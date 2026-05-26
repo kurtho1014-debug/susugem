@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useRouter, usePathname } from 'next/navigation'
-import { Package, ShoppingCart, Users, ClipboardList, LayoutDashboard, Boxes, LogOut } from 'lucide-react'
+import { Package, ShoppingCart, Users, ClipboardList, LayoutDashboard, Boxes, LogOut, ShieldCheck } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
 const navItems = [
@@ -12,6 +12,7 @@ const navItems = [
   { href: '/admin/products', label: '商品管理', icon: Package },
   { href: '/admin/materials', label: '包材管理', icon: Boxes },
   { href: '/admin/members', label: '會員管理', icon: Users },
+  { href: '/admin/users', label: '管理員帳號', icon: ShieldCheck },
 ]
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {

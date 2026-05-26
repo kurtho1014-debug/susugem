@@ -28,6 +28,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
+import { Plus, Trash2 } from 'lucide-react'
 
 type Order = {
   id: string
@@ -53,6 +54,16 @@ type Order = {
     subtotal: number
   }[]
 }
+
+type OrderMaterial = {
+  id: string
+  material_id: string
+  quantity: number
+  notes: string | null
+  materials: { name: string; unit: string }
+}
+
+type Material = { id: string; name: string; unit: string }
 
 const orderStatusOptions = [
   { value: 'pending',    label: '待處理', variant: 'outline' },
@@ -82,6 +93,13 @@ export default function OrdersPage() {
   const [loading, setLoading] = useState(true)
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
   const [saving, setSaving] = useState(false)
+
+  // 包材
+  const [orderMaterials, setOrderMaterials] = useState<OrderMaterial[]>([])
+  const [allMaterials, setAllMaterials] = useState<Material[]>([])
+  const [materialForm, setMaterialForm] = useState({ material_id: '', quantity: '1', notes: '' })
+  const [addingMaterial, setAddingMaterial] = useState(false)
+  const [materialSaving, setMaterialSaving] = useState(false)
 
   // 篩選
   const [filterActivity, setFilterActivity] = useState('all')
@@ -114,8 +132,52 @@ export default function OrdersPage() {
     if (data) setActivities(data)
   }
 
+  const fetchAllMaterials = async () => {
+    const { data } = await supabase.from('materials').select('id, name, unit').order('name')
+    if (data) setAllMaterials(data)
+  }
+
+  const fetchOrderMaterials = async (orderId: string) => {
+    const { data } = await supabase
+      .from('order_materials')
+      .select('id, material_id, quantity, notes, materials(name, unit)')
+      .eq('order_id', orderId)
+      .order('created_at')
+    if (data) setOrderMaterials(data as unknown as OrderMaterial[])
+  }
+
+  const openOrder = (order: Order) => {
+    setSelectedOrder(order)
+    setAddingMaterial(false)
+    setMaterialForm({ material_id: '', quantity: '1', notes: '' })
+    fetchOrderMaterials(order.id)
+  }
+
+  const addOrderMaterial = async () => {
+    if (!selectedOrder || !materialForm.material_id) return
+    setMaterialSaving(true)
+    const { error } = await supabase.from('order_materials').insert({
+      order_id: selectedOrder.id,
+      material_id: materialForm.material_id,
+      quantity: parseInt(materialForm.quantity) || 1,
+      notes: materialForm.notes || null,
+    })
+    setMaterialSaving(false)
+    if (error) { alert('新增失敗：' + error.message); return }
+    setAddingMaterial(false)
+    setMaterialForm({ material_id: '', quantity: '1', notes: '' })
+    fetchOrderMaterials(selectedOrder.id)
+  }
+
+  const removeOrderMaterial = async (id: string) => {
+    if (!confirm('確定移除此包材？')) return
+    await supabase.from('order_materials').delete().eq('id', id)
+    if (selectedOrder) fetchOrderMaterials(selectedOrder.id)
+  }
+
   useEffect(() => {
     fetchActivities()
+    fetchAllMaterials()
   }, [])
 
   useEffect(() => {
@@ -205,7 +267,7 @@ export default function OrdersPage() {
                 <TableRow
                   key={order.id}
                   className="cursor-pointer hover:bg-gray-50"
-                  onClick={() => setSelectedOrder(order)}
+                  onClick={() => openOrder(order)}
                 >
                   <TableCell className="font-medium">{order.customer_name}</TableCell>
                   <TableCell className="text-gray-500">{order.activities?.name ?? '—'}</TableCell>
@@ -354,6 +416,93 @@ export default function OrdersPage() {
                 >
                   儲存備註
                 </Button>
+              </div>
+
+              {/* 包材 */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>使用包材</Label>
+                  <Button size="sm" variant="outline" onClick={() => setAddingMaterial(true)}>
+                    <Plus className="h-3.5 w-3.5 mr-1" />加入包材
+                  </Button>
+                </div>
+
+                {/* 新增包材表單 */}
+                {addingMaterial && (
+                  <div className="border rounded-lg p-3 space-y-2 bg-gray-50">
+                    <div className="space-y-1">
+                      <Label className="text-xs">選擇包材</Label>
+                      <Select
+                        value={materialForm.material_id}
+                        onValueChange={v => v && setMaterialForm({ ...materialForm, material_id: v })}
+                      >
+                        <SelectTrigger className="h-8 text-sm">
+                          <SelectValue placeholder="選擇包材">
+                            {materialForm.material_id
+                              ? (() => { const m = allMaterials.find(m => m.id === materialForm.material_id); return m ? `${m.name}（${m.unit}）` : '選擇包材' })()
+                              : '選擇包材'}
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {allMaterials.map(m => (
+                            <SelectItem key={m.id} value={m.id}>{m.name}（{m.unit}）</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex gap-2">
+                      <div className="space-y-1 w-24">
+                        <Label className="text-xs">數量</Label>
+                        <Input
+                          type="number"
+                          min={1}
+                          className="h-8 text-sm"
+                          value={materialForm.quantity}
+                          onChange={e => setMaterialForm({ ...materialForm, quantity: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-1 flex-1">
+                        <Label className="text-xs">備註（選填）</Label>
+                        <Input
+                          className="h-8 text-sm"
+                          placeholder="例：特殊尺寸"
+                          value={materialForm.notes}
+                          onChange={e => setMaterialForm({ ...materialForm, notes: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                    <div className="flex gap-2 justify-end">
+                      <Button size="sm" variant="ghost" onClick={() => setAddingMaterial(false)}>取消</Button>
+                      <Button
+                        size="sm"
+                        disabled={materialSaving || !materialForm.material_id}
+                        onClick={addOrderMaterial}
+                      >
+                        {materialSaving ? '新增中...' : '確認新增'}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* 已加入的包材列表 */}
+                {orderMaterials.length === 0 ? (
+                  <p className="text-sm text-gray-400 py-2 text-center">尚未加入包材</p>
+                ) : (
+                  <div className="border rounded-lg divide-y">
+                    {orderMaterials.map(om => (
+                      <div key={om.id} className="flex items-center justify-between px-3 py-2 text-sm">
+                        <div>
+                          <span className="font-medium">{om.materials.name}</span>
+                          <span className="text-gray-400 ml-2">× {om.quantity} {om.materials.unit}</span>
+                          {om.notes && <span className="text-gray-400 ml-2 text-xs">（{om.notes}）</span>}
+                        </div>
+                        <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => removeOrderMaterial(om.id)}>
+                          <Trash2 className="h-3.5 w-3.5 text-red-400" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </DialogContent>
