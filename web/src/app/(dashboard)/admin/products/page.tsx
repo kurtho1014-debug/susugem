@@ -13,44 +13,75 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
-import { Plus, Pencil, ImageIcon } from 'lucide-react'
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select'
+import { Plus, Pencil, ImageIcon, Trash2, Settings2 } from 'lucide-react'
 import { ImageUploader } from '@/components/image-uploader'
+
+type Supplier = { id: string; name: string }
+type Category = { id: string; name: string }
 
 type Product = {
   id: string
   name: string
   description: string | null
-  price: number          // 售價（對客戶顯示）
-  cost_price: number | null  // 成本價（業主內部）
+  price: number
+  cost_price: number | null
   is_active: boolean
   notes: string | null
   images: string[]
+  supplier_id: string | null
+  category_id: string | null
+  suppliers?: { name: string } | null
+  product_categories?: { name: string } | null
   created_at: string
 }
 
 const emptyForm = {
   name: '', description: '', price: '', cost_price: '',
   notes: '', is_active: true, images: [] as string[],
+  supplier_id: '', category_id: '',
 }
 
 export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([])
+  const [suppliers, setSuppliers] = useState<Supplier[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
+
+  // 商品 dialog
   const [dialogOpen, setDialogOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [editing, setEditing] = useState<Product | null>(null)
   const [form, setForm] = useState(emptyForm)
 
+  // 類別管理 dialog
+  const [categoryDialogOpen, setCategoryDialogOpen] = useState(false)
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null)
+  const [categoryName, setCategoryName] = useState('')
+  const [categorySaving, setCategorySaving] = useState(false)
+
   const supabase = createClient()
 
-  const fetchProducts = async () => {
+  const fetchAll = async () => {
     setLoading(true)
-    const { data } = await supabase.from('products').select('*').order('created_at', { ascending: false })
-    if (data) setProducts(data)
+    const [{ data: prods }, { data: sups }, { data: cats }] = await Promise.all([
+      supabase.from('products')
+        .select('*, suppliers(name), product_categories(name)')
+        .order('created_at', { ascending: false }),
+      supabase.from('suppliers').select('id, name').order('name'),
+      supabase.from('product_categories').select('id, name').order('name'),
+    ])
+    if (prods) setProducts(prods as Product[])
+    if (sups) setSuppliers(sups)
+    if (cats) setCategories(cats)
     setLoading(false)
   }
 
-  useEffect(() => { fetchProducts() }, [])
+  useEffect(() => { fetchAll() }, [])
+
+  // ── 商品 CRUD ────────────────────────────────────────────────────────────────
 
   const openCreate = () => {
     setEditing(null)
@@ -58,16 +89,18 @@ export default function ProductsPage() {
     setDialogOpen(true)
   }
 
-  const openEdit = (product: Product) => {
-    setEditing(product)
+  const openEdit = (p: Product) => {
+    setEditing(p)
     setForm({
-      name: product.name,
-      description: product.description ?? '',
-      price: String(product.price),
-      cost_price: product.cost_price != null ? String(product.cost_price) : '',
-      notes: product.notes ?? '',
-      is_active: product.is_active,
-      images: product.images ?? [],
+      name: p.name,
+      description: p.description ?? '',
+      price: String(p.price),
+      cost_price: p.cost_price != null ? String(p.cost_price) : '',
+      notes: p.notes ?? '',
+      is_active: p.is_active,
+      images: p.images ?? [],
+      supplier_id: p.supplier_id ?? '',
+      category_id: p.category_id ?? '',
     })
     setDialogOpen(true)
   }
@@ -75,7 +108,6 @@ export default function ProductsPage() {
   const handleSave = async () => {
     if (!form.name.trim()) return
     setSaving(true)
-
     const payload = {
       name: form.name.trim(),
       description: form.description || null,
@@ -84,22 +116,57 @@ export default function ProductsPage() {
       notes: form.notes || null,
       is_active: form.is_active,
       images: form.images,
+      supplier_id: form.supplier_id || null,
+      category_id: form.category_id || null,
     }
-
     const { error } = editing
       ? await supabase.from('products').update(payload).eq('id', editing.id)
       : await supabase.from('products').insert(payload)
-
     setSaving(false)
-    if (!error) {
-      setDialogOpen(false)
-      fetchProducts()
-    } else {
-      alert('儲存失敗：' + error.message)
-    }
+    if (!error) { setDialogOpen(false); fetchAll() }
+    else alert('儲存失敗：' + error.message)
   }
 
-  // 利潤計算
+  const handleDelete = async (p: Product) => {
+    if (!confirm(`確定要刪除商品「${p.name}」？`)) return
+    const { error } = await supabase.from('products').delete().eq('id', p.id)
+    if (error) alert('刪除失敗：' + error.message)
+    else fetchAll()
+  }
+
+  // ── 類別 CRUD ─────────────────────────────────────────────────────────────────
+
+  const openCategoryDialog = () => {
+    setEditingCategory(null)
+    setCategoryName('')
+    setCategoryDialogOpen(true)
+  }
+
+  const openEditCategory = (c: Category) => {
+    setEditingCategory(c)
+    setCategoryName(c.name)
+  }
+
+  const saveCategory = async () => {
+    if (!categoryName.trim()) return
+    setCategorySaving(true)
+    const { error } = editingCategory
+      ? await supabase.from('product_categories').update({ name: categoryName.trim() }).eq('id', editingCategory.id)
+      : await supabase.from('product_categories').insert({ name: categoryName.trim() })
+    setCategorySaving(false)
+    if (!error) { setEditingCategory(null); setCategoryName(''); fetchAll() }
+    else alert('儲存失敗：' + error.message)
+  }
+
+  const deleteCategory = async (id: string) => {
+    if (!confirm('確定刪除此類別？')) return
+    const { error } = await supabase.from('product_categories').delete().eq('id', id)
+    if (!error) fetchAll()
+    else alert('刪除失敗：' + error.message)
+  }
+
+  // ── 利潤計算 ─────────────────────────────────────────────────────────────────
+
   const margin = (p: Product) => {
     if (p.cost_price == null || p.cost_price === 0) return null
     return Math.round(((p.price - p.cost_price) / p.price) * 100)
@@ -112,9 +179,14 @@ export default function ProductsPage() {
           <h1 className="text-2xl font-bold">商品管理</h1>
           <p className="text-gray-500 text-sm mt-1">管理販售商品</p>
         </div>
-        <Button onClick={openCreate}>
-          <Plus className="h-4 w-4 mr-2" />新增商品
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={openCategoryDialog}>
+            <Settings2 className="h-4 w-4 mr-2" />管理類別
+          </Button>
+          <Button onClick={openCreate}>
+            <Plus className="h-4 w-4 mr-2" />新增商品
+          </Button>
+        </div>
       </div>
 
       <div className="border rounded-lg bg-white">
@@ -123,6 +195,8 @@ export default function ProductsPage() {
             <TableRow>
               <TableHead className="w-12"></TableHead>
               <TableHead>商品名稱</TableHead>
+              <TableHead>供應商</TableHead>
+              <TableHead>類別</TableHead>
               <TableHead>售價</TableHead>
               <TableHead>成本價</TableHead>
               <TableHead>毛利率</TableHead>
@@ -133,9 +207,9 @@ export default function ProductsPage() {
           </TableHeader>
           <TableBody>
             {loading ? (
-              <TableRow><TableCell colSpan={8} className="text-center py-10 text-gray-400">載入中...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={10} className="text-center py-10 text-gray-400">載入中...</TableCell></TableRow>
             ) : products.length === 0 ? (
-              <TableRow><TableCell colSpan={8} className="text-center py-10 text-gray-400">尚無商品</TableCell></TableRow>
+              <TableRow><TableCell colSpan={10} className="text-center py-10 text-gray-400">尚無商品</TableCell></TableRow>
             ) : products.map(p => {
               const m = margin(p)
               return (
@@ -147,6 +221,15 @@ export default function ProductsPage() {
                     }
                   </TableCell>
                   <TableCell className="font-medium">{p.name}</TableCell>
+                  <TableCell className="text-gray-500 text-sm">
+                    {p.suppliers?.name ?? <span className="text-gray-300">—</span>}
+                  </TableCell>
+                  <TableCell>
+                    {p.product_categories?.name
+                      ? <Badge variant="outline">{p.product_categories.name}</Badge>
+                      : <span className="text-gray-300">—</span>
+                    }
+                  </TableCell>
                   <TableCell className="font-medium">NT$ {p.price.toLocaleString()}</TableCell>
                   <TableCell className="text-gray-500">
                     {p.cost_price != null ? `NT$ ${p.cost_price.toLocaleString()}` : <span className="text-gray-300">—</span>}
@@ -165,9 +248,14 @@ export default function ProductsPage() {
                   </TableCell>
                   <TableCell className="text-gray-400">{new Date(p.created_at).toLocaleDateString('zh-TW')}</TableCell>
                   <TableCell>
-                    <Button variant="ghost" size="sm" onClick={() => openEdit(p)}>
-                      <Pencil className="h-4 w-4" />
-                    </Button>
+                    <div className="flex gap-1">
+                      <Button variant="ghost" size="sm" onClick={() => openEdit(p)}>
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => handleDelete(p)}>
+                        <Trash2 className="h-4 w-4 text-red-400" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               )
@@ -176,8 +264,9 @@ export default function ProductsPage() {
         </Table>
       </div>
 
+      {/* ── 商品 Dialog ── */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{editing ? '編輯商品' : '新增商品'}</DialogTitle>
           </DialogHeader>
@@ -187,20 +276,60 @@ export default function ProductsPage() {
               <Input placeholder="例：客製禮盒" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
             </div>
 
-            {/* 售價 / 成本價並排 */}
+            {/* 供應商 / 類別 */}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>
-                  售價（NT$）
-                  <span className="ml-1 text-xs text-gray-400 font-normal">客戶看到</span>
-                </Label>
+                <Label>供應商</Label>
+                <Select
+                  value={form.supplier_id || '__none__'}
+                  onValueChange={v => setForm({ ...form, supplier_id: v === '__none__' ? '' : (v ?? '') })}
+                >
+                  <SelectTrigger>
+                    <SelectValue>
+                      {form.supplier_id
+                        ? suppliers.find(s => s.id === form.supplier_id)?.name ?? '選擇供應商'
+                        : '不指定'}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">不指定</SelectItem>
+                    {suppliers.map(s => (
+                      <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>類別</Label>
+                <Select
+                  value={form.category_id || '__none__'}
+                  onValueChange={v => setForm({ ...form, category_id: v === '__none__' ? '' : (v ?? '') })}
+                >
+                  <SelectTrigger>
+                    <SelectValue>
+                      {form.category_id
+                        ? categories.find(c => c.id === form.category_id)?.name ?? '選擇類別'
+                        : '不指定'}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">不指定</SelectItem>
+                    {categories.map(c => (
+                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* 售價 / 成本價 */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>售價（NT$）<span className="ml-1 text-xs text-gray-400 font-normal">客戶看到</span></Label>
                 <Input type="number" placeholder="0" value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} />
               </div>
               <div className="space-y-2">
-                <Label>
-                  成本價（NT$）
-                  <span className="ml-1 text-xs text-gray-400 font-normal">業主內部</span>
-                </Label>
+                <Label>成本價（NT$）<span className="ml-1 text-xs text-gray-400 font-normal">業主內部</span></Label>
                 <Input type="number" placeholder="選填" value={form.cost_price} onChange={e => setForm({ ...form, cost_price: e.target.value })} />
               </div>
             </div>
@@ -244,6 +373,54 @@ export default function ProductsPage() {
             <Button onClick={handleSave} disabled={saving || !form.name.trim()}>
               {saving ? '儲存中...' : '儲存'}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── 類別管理 Dialog ── */}
+      <Dialog open={categoryDialogOpen} onOpenChange={setCategoryDialogOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>管理商品類別</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            {/* 新增 / 編輯類別 */}
+            <div className="flex gap-2">
+              <Input
+                placeholder="類別名稱"
+                value={categoryName}
+                onChange={e => setCategoryName(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && saveCategory()}
+              />
+              <Button onClick={saveCategory} disabled={categorySaving || !categoryName.trim()}>
+                {editingCategory ? '更新' : '新增'}
+              </Button>
+              {editingCategory && (
+                <Button variant="outline" onClick={() => { setEditingCategory(null); setCategoryName('') }}>取消</Button>
+              )}
+            </div>
+
+            {/* 類別列表 */}
+            <div className="space-y-1 max-h-60 overflow-y-auto">
+              {categories.length === 0 ? (
+                <p className="text-center text-gray-400 py-4 text-sm">尚無類別</p>
+              ) : categories.map(c => (
+                <div key={c.id} className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-gray-50">
+                  <span className="text-sm">{c.name}</span>
+                  <div className="flex gap-1">
+                    <Button variant="ghost" size="sm" onClick={() => openEditCategory(c)}>
+                      <Pencil className="h-3 w-3" />
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => deleteCategory(c.id)}>
+                      <Trash2 className="h-3 w-3 text-red-400" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCategoryDialogOpen(false)}>關閉</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
