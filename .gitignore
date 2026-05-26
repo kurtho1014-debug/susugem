@@ -1,0 +1,20 @@
+# ── Docker / Supabase self-hosted ─────────────────────────────
+# 本機資料庫資料（不能推上 GitHub）
+volumes/db/data/
+volumes/storage/
+volumes/logs/
+
+# 環境變數（含密鑰）— 所有變形都排除
+.env
+.env.*
+*.env
+
+# ── macOS ─────────────────────────────────────────────────────
+.DS_Store
+
+# ── IDE ───────────────────────────────────────────────────────
+.idea/
+.vscode/
+
+# ── Claude Code（本機設定，不需上傳）────────────────────────
+.claude/
