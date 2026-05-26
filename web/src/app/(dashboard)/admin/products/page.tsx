@@ -56,6 +56,12 @@ export default function ProductsPage() {
   const [editing, setEditing] = useState<Product | null>(null)
   const [form, setForm] = useState(emptyForm)
 
+  // 供應商管理 dialog
+  const [supplierDialogOpen, setSupplierDialogOpen] = useState(false)
+  const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null)
+  const [supplierName, setSupplierName] = useState('')
+  const [supplierSaving, setSupplierSaving] = useState(false)
+
   // 類別管理 dialog
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false)
   const [editingCategory, setEditingCategory] = useState<Category | null>(null)
@@ -134,6 +140,37 @@ export default function ProductsPage() {
     else fetchAll()
   }
 
+  // ── 供應商 CRUD ───────────────────────────────────────────────────────────────
+
+  const openSupplierDialog = () => {
+    setEditingSupplier(null)
+    setSupplierName('')
+    setSupplierDialogOpen(true)
+  }
+
+  const openEditSupplier = (s: Supplier) => {
+    setEditingSupplier(s)
+    setSupplierName(s.name)
+  }
+
+  const saveSupplier = async () => {
+    if (!supplierName.trim()) return
+    setSupplierSaving(true)
+    const { error } = editingSupplier
+      ? await supabase.from('suppliers').update({ name: supplierName.trim() }).eq('id', editingSupplier.id)
+      : await supabase.from('suppliers').insert({ name: supplierName.trim() })
+    setSupplierSaving(false)
+    if (!error) { setEditingSupplier(null); setSupplierName(''); fetchAll() }
+    else alert('儲存失敗：' + error.message)
+  }
+
+  const deleteSupplier = async (id: string) => {
+    if (!confirm('確定刪除此供應商？')) return
+    const { error } = await supabase.from('suppliers').delete().eq('id', id)
+    if (!error) fetchAll()
+    else alert('刪除失敗：' + error.message)
+  }
+
   // ── 類別 CRUD ─────────────────────────────────────────────────────────────────
 
   const openCategoryDialog = () => {
@@ -177,11 +214,14 @@ export default function ProductsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">商品管理</h1>
-          <p className="text-gray-500 text-sm mt-1">管理販售商品</p>
+          <p className="text-gray-500 text-sm mt-1">管理販售商品、供應商與類別</p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" onClick={openSupplierDialog}>
+            <Settings2 className="h-4 w-4 mr-1.5" />供應商
+          </Button>
           <Button variant="outline" onClick={openCategoryDialog}>
-            <Settings2 className="h-4 w-4 mr-2" />管理類別
+            <Settings2 className="h-4 w-4 mr-1.5" />類別
           </Button>
           <Button onClick={openCreate}>
             <Plus className="h-4 w-4 mr-2" />新增商品
@@ -189,14 +229,15 @@ export default function ProductsPage() {
         </div>
       </div>
 
+      {/* 商品列表 */}
       <div className="border rounded-lg bg-white">
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead className="w-12"></TableHead>
               <TableHead>商品名稱</TableHead>
-              <TableHead>供應商</TableHead>
               <TableHead>類別</TableHead>
+              <TableHead>供應商</TableHead>
               <TableHead>售價</TableHead>
               <TableHead>成本價</TableHead>
               <TableHead>毛利率</TableHead>
@@ -221,14 +262,11 @@ export default function ProductsPage() {
                     }
                   </TableCell>
                   <TableCell className="font-medium">{p.name}</TableCell>
-                  <TableCell className="text-gray-500 text-sm">
-                    {p.suppliers?.name ?? <span className="text-gray-300">—</span>}
+                  <TableCell className="text-gray-500">
+                    {p.product_categories?.name ?? <span className="text-gray-300">—</span>}
                   </TableCell>
-                  <TableCell>
-                    {p.product_categories?.name
-                      ? <Badge variant="outline">{p.product_categories.name}</Badge>
-                      : <span className="text-gray-300">—</span>
-                    }
+                  <TableCell className="text-gray-500">
+                    {p.suppliers?.name ?? <span className="text-gray-300">—</span>}
                   </TableCell>
                   <TableCell className="font-medium">NT$ {p.price.toLocaleString()}</TableCell>
                   <TableCell className="text-gray-500">
@@ -281,8 +319,8 @@ export default function ProductsPage() {
               <div className="space-y-2">
                 <Label>供應商</Label>
                 <Select
-                  value={form.supplier_id || '__none__'}
-                  onValueChange={v => setForm({ ...form, supplier_id: v === '__none__' ? '' : (v ?? '') })}
+                  value={form.supplier_id}
+                  onValueChange={v => setForm({ ...form, supplier_id: v ?? '' })}
                 >
                   <SelectTrigger>
                     <SelectValue>
@@ -292,7 +330,7 @@ export default function ProductsPage() {
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="__none__">不指定</SelectItem>
+                    <SelectItem value="">不指定</SelectItem>
                     {suppliers.map(s => (
                       <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
                     ))}
@@ -302,8 +340,8 @@ export default function ProductsPage() {
               <div className="space-y-2">
                 <Label>類別</Label>
                 <Select
-                  value={form.category_id || '__none__'}
-                  onValueChange={v => setForm({ ...form, category_id: v === '__none__' ? '' : (v ?? '') })}
+                  value={form.category_id}
+                  onValueChange={v => setForm({ ...form, category_id: v ?? '' })}
                 >
                   <SelectTrigger>
                     <SelectValue>
@@ -313,7 +351,7 @@ export default function ProductsPage() {
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="__none__">不指定</SelectItem>
+                    <SelectItem value="">不指定</SelectItem>
                     {categories.map(c => (
                       <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
                     ))}
@@ -377,47 +415,143 @@ export default function ProductsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* ── 類別管理 Dialog ── */}
-      <Dialog open={categoryDialogOpen} onOpenChange={setCategoryDialogOpen}>
+      {/* ── 供應商管理 Dialog ── */}
+      <Dialog open={supplierDialogOpen} onOpenChange={open => {
+        setSupplierDialogOpen(open)
+        if (!open) { setEditingSupplier(null); setSupplierName('') }
+      }}>
         <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>管理商品類別</DialogTitle>
-          </DialogHeader>
+          <DialogHeader><DialogTitle>供應商管理</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
-            {/* 新增 / 編輯類別 */}
-            <div className="flex gap-2">
-              <Input
-                placeholder="類別名稱"
-                value={categoryName}
-                onChange={e => setCategoryName(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && saveCategory()}
-              />
-              <Button onClick={saveCategory} disabled={categorySaving || !categoryName.trim()}>
-                {editingCategory ? '更新' : '新增'}
-              </Button>
-              {editingCategory && (
-                <Button variant="outline" onClick={() => { setEditingCategory(null); setCategoryName('') }}>取消</Button>
-              )}
-            </div>
-
-            {/* 類別列表 */}
-            <div className="space-y-1 max-h-60 overflow-y-auto">
-              {categories.length === 0 ? (
-                <p className="text-center text-gray-400 py-4 text-sm">尚無類別</p>
-              ) : categories.map(c => (
-                <div key={c.id} className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-gray-50">
-                  <span className="text-sm">{c.name}</span>
-                  <div className="flex gap-1">
-                    <Button variant="ghost" size="sm" onClick={() => openEditCategory(c)}>
-                      <Pencil className="h-3 w-3" />
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={() => deleteCategory(c.id)}>
-                      <Trash2 className="h-3 w-3 text-red-400" />
-                    </Button>
+            {suppliers.length > 0 && (
+              <div className="border rounded-lg divide-y">
+                {suppliers.map(s => (
+                  <div key={s.id} className="flex items-center justify-between px-3 py-2">
+                    {editingSupplier?.id === s.id ? (
+                      <Input
+                        className="h-7 text-sm flex-1 mr-2"
+                        value={supplierName}
+                        onChange={e => setSupplierName(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && saveSupplier()}
+                        autoFocus
+                      />
+                    ) : (
+                      <span className="text-sm flex-1">{s.name}</span>
+                    )}
+                    <div className="flex gap-1 shrink-0">
+                      {editingSupplier?.id === s.id ? (
+                        <>
+                          <Button size="sm" className="h-7 text-xs" onClick={saveSupplier}
+                            disabled={supplierSaving || !supplierName.trim()}>
+                            {supplierSaving ? '...' : '存'}
+                          </Button>
+                          <Button size="sm" variant="ghost" className="h-7"
+                            onClick={() => { setEditingSupplier(null); setSupplierName('') }}>
+                            取消
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0"
+                            onClick={() => openEditSupplier(s)}>
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0"
+                            onClick={() => deleteSupplier(s.id)}>
+                            <Trash2 className="h-3.5 w-3.5 text-red-400" />
+                          </Button>
+                        </>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
+            {!editingSupplier && (
+              <div className="flex gap-2">
+                <Input
+                  placeholder="新供應商名稱"
+                  value={supplierName}
+                  onChange={e => setSupplierName(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && saveSupplier()}
+                />
+                <Button onClick={saveSupplier} disabled={supplierSaving || !supplierName.trim()}>
+                  {supplierSaving ? '...' : '新增'}
+                </Button>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSupplierDialogOpen(false)}>關閉</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── 類別管理 Dialog ── */}
+      <Dialog open={categoryDialogOpen} onOpenChange={open => {
+        setCategoryDialogOpen(open)
+        if (!open) { setEditingCategory(null); setCategoryName('') }
+      }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader><DialogTitle>類別管理</DialogTitle></DialogHeader>
+          <div className="space-y-4 py-2">
+            {categories.length > 0 && (
+              <div className="border rounded-lg divide-y">
+                {categories.map(c => (
+                  <div key={c.id} className="flex items-center justify-between px-3 py-2">
+                    {editingCategory?.id === c.id ? (
+                      <Input
+                        className="h-7 text-sm flex-1 mr-2"
+                        value={categoryName}
+                        onChange={e => setCategoryName(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && saveCategory()}
+                        autoFocus
+                      />
+                    ) : (
+                      <span className="text-sm flex-1">{c.name}</span>
+                    )}
+                    <div className="flex gap-1 shrink-0">
+                      {editingCategory?.id === c.id ? (
+                        <>
+                          <Button size="sm" className="h-7 text-xs" onClick={saveCategory}
+                            disabled={categorySaving || !categoryName.trim()}>
+                            {categorySaving ? '...' : '存'}
+                          </Button>
+                          <Button size="sm" variant="ghost" className="h-7"
+                            onClick={() => { setEditingCategory(null); setCategoryName('') }}>
+                            取消
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0"
+                            onClick={() => openEditCategory(c)}>
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0"
+                            onClick={() => deleteCategory(c.id)}>
+                            <Trash2 className="h-3.5 w-3.5 text-red-400" />
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {!editingCategory && (
+              <div className="flex gap-2">
+                <Input
+                  placeholder="新類別名稱"
+                  value={categoryName}
+                  onChange={e => setCategoryName(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && saveCategory()}
+                />
+                <Button onClick={saveCategory} disabled={categorySaving || !categoryName.trim()}>
+                  {categorySaving ? '...' : '新增'}
+                </Button>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCategoryDialogOpen(false)}>關閉</Button>
