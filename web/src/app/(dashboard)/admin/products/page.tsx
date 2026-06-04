@@ -304,7 +304,7 @@ export default function ProductsPage() {
 
       {/* ── 商品 Dialog ── */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editing ? '編輯商品' : '新增商品'}</DialogTitle>
           </DialogHeader>
