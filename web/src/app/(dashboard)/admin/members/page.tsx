@@ -21,6 +21,7 @@ type Member = {
   phone: string | null
   email: string | null
   line_id: string | null
+  ig_id: string | null
   address: string | null
   is_registered: boolean
   notes: string | null
@@ -28,7 +29,7 @@ type Member = {
 }
 
 const emptyForm = {
-  name: '', phone: '', email: '', line_id: '', address: '', notes: '', is_registered: false,
+  name: '', phone: '', email: '', line_id: '', ig_id: '', address: '', notes: '', is_registered: false,
 }
 
 export default function MembersPage() {
@@ -68,6 +69,7 @@ export default function MembersPage() {
       phone: m.phone ?? '',
       email: m.email ?? '',
       line_id: m.line_id ?? '',
+      ig_id: m.ig_id ?? '',
       address: m.address ?? '',
       notes: m.notes ?? '',
       is_registered: m.is_registered,
@@ -90,6 +92,7 @@ export default function MembersPage() {
       phone: form.phone || null,
       email: form.email || null,
       line_id: form.line_id || null,
+      ig_id: form.ig_id || null,
       address: form.address || null,
       notes: form.notes || null,
       is_registered: form.is_registered,
@@ -188,6 +191,10 @@ export default function MembersPage() {
                 <Label>LINE ID</Label>
                 <Input placeholder="LINE ID" value={form.line_id} onChange={e => setForm({ ...form, line_id: e.target.value })} />
               </div>
+            </div>
+            <div className="space-y-2">
+              <Label>IG ID</Label>
+              <Input placeholder="Instagram 帳號" value={form.ig_id} onChange={e => setForm({ ...form, ig_id: e.target.value })} />
             </div>
             <div className="space-y-2">
               <Label>Email</Label>

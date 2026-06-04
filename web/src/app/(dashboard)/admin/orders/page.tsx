@@ -28,7 +28,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
-import { Plus, Trash2, Search } from 'lucide-react'
+import { Plus, Trash2, Search, ChevronDown } from 'lucide-react'
 
 type Member = {
   id: string
@@ -249,6 +249,20 @@ export default function OrdersPage() {
     if (!q.trim()) { setFreeProductResults([]); return }
     const { data } = await supabase.from('products').select('id, name, price').ilike('name', `%${q}%`).eq('is_active', true).limit(8)
     if (data) setFreeProductResults(data)
+  }
+
+  const toggleProductDropdown = async () => {
+    if (freeProductSearchOpen) {
+      setFreeProductSearchOpen(false)
+      return
+    }
+    if (freeProductSearch.trim()) {
+      setFreeProductSearchOpen(true)
+      return
+    }
+    const { data } = await supabase.from('products').select('id, name, price').eq('is_active', true).order('name').limit(50)
+    if (data) setFreeProductResults(data)
+    setFreeProductSearchOpen(true)
   }
 
   const addFreeItem = (p: Product) => {
@@ -769,7 +783,7 @@ export default function OrdersPage() {
       )}
 
       {/* ── 新增訂單 Dialog ────────────────────────────── */}
-      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen} disablePointerDismissal>
         <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>新增訂單</DialogTitle>
@@ -988,7 +1002,7 @@ export default function OrdersPage() {
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                   <Input
-                    className="pl-9"
+                    className="pl-9 pr-9"
                     placeholder="搜尋商品名稱..."
                     value={freeProductSearch}
                     onChange={e => {
@@ -998,6 +1012,13 @@ export default function OrdersPage() {
                     }}
                     onFocus={() => freeProductSearch && setFreeProductSearchOpen(true)}
                   />
+                  <button
+                    type="button"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    onClick={toggleProductDropdown}
+                  >
+                    <ChevronDown className={`h-4 w-4 transition-transform ${freeProductSearchOpen ? 'rotate-180' : ''}`} />
+                  </button>
                   {freeProductSearchOpen && freeProductResults.length > 0 && (
                     <div className="absolute z-50 top-full mt-1 w-full bg-white border rounded-lg shadow-md max-h-48 overflow-y-auto">
                       {freeProductResults.map(p => (
