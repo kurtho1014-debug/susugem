@@ -143,7 +143,7 @@ export default function OrdersPage() {
   const [createDeliveryFee, setCreateDeliveryFee] = useState('0')
 
   // 自由模式
-  const [createMode, setCreateMode] = useState<'activity' | 'free'>('activity')
+  const [createMode, setCreateMode] = useState<'activity' | 'free'>('free')
   const [allDeliveryMethods, setAllDeliveryMethods] = useState<DeliveryMethod[]>([])
   const [freeDeliveryId, setFreeDeliveryId] = useState('')
   const [freeDeliveryFee, setFreeDeliveryFee] = useState('0')
@@ -313,7 +313,7 @@ export default function OrdersPage() {
     setMemberResults([])
     setMemberSearchOpen(false)
     setCreateDeliveryFee('0')
-    setCreateMode('activity')
+    setCreateMode('free')
     setFreeItems([])
     setFreeMaterials([])
     setFreeDeliveryId('')
@@ -779,14 +779,14 @@ export default function OrdersPage() {
             {/* 模式切換 */}
             <div className="flex gap-1 p-1 bg-gray-100 rounded-lg">
               <button type="button"
-                className={`flex-1 py-1.5 text-sm rounded-md transition-colors ${createMode === 'activity' ? 'bg-white shadow-sm font-medium' : 'text-gray-500 hover:text-gray-700'}`}
-                onClick={() => setCreateMode('activity')}>
-                活動模式
-              </button>
-              <button type="button"
                 className={`flex-1 py-1.5 text-sm rounded-md transition-colors ${createMode === 'free' ? 'bg-white shadow-sm font-medium' : 'text-gray-500 hover:text-gray-700'}`}
                 onClick={() => setCreateMode('free')}>
                 自由模式
+              </button>
+              <button type="button"
+                className={`flex-1 py-1.5 text-sm rounded-md transition-colors ${createMode === 'activity' ? 'bg-white shadow-sm font-medium' : 'text-gray-500 hover:text-gray-700'}`}
+                onClick={() => setCreateMode('activity')}>
+                活動模式
               </button>
             </div>
 
