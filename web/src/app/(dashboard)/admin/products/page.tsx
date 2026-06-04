@@ -16,8 +16,28 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
-import { Plus, Pencil, ImageIcon, Trash2, Settings2 } from 'lucide-react'
+import { Plus, Pencil, ImageIcon, Trash2, Settings2, GripVertical, ArrowUpDown } from 'lucide-react'
 import { ImageUploader } from '@/components/image-uploader'
+import {
+  DndContext, closestCenter, PointerSensor, useSensor, useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  SortableContext, verticalListSortingStrategy, useSortable, arrayMove,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+
+function SortableRow({ id, children }: { id: string; children: (h: Record<string, unknown>) => React.ReactNode }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
+  return (
+    <TableRow
+      ref={setNodeRef as React.Ref<HTMLTableRowElement>}
+      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }}
+    >
+      {children({ ...attributes, ...listeners })}
+    </TableRow>
+  )
+}
 
 type Supplier = { id: string; name: string }
 type Category = { id: string; name: string }
@@ -33,6 +53,7 @@ type Product = {
   images: string[]
   supplier_id: string | null
   category_id: string | null
+  sort_order: number
   suppliers?: { name: string } | null
   product_categories?: { name: string } | null
   created_at: string
@@ -55,6 +76,9 @@ export default function ProductsPage() {
   const [saving, setSaving] = useState(false)
   const [editing, setEditing] = useState<Product | null>(null)
   const [form, setForm] = useState(emptyForm)
+  const [sortMode, setSortMode] = useState(false)
+  const [sortSaving, setSortSaving] = useState(false)
+  const sensors = useSensors(useSensor(PointerSensor))
 
   // 供應商管理 dialog
   const [supplierDialogOpen, setSupplierDialogOpen] = useState(false)
@@ -75,6 +99,7 @@ export default function ProductsPage() {
     const [{ data: prods }, { data: sups }, { data: cats }] = await Promise.all([
       supabase.from('products')
         .select('*, suppliers(name), product_categories(name)')
+        .order('sort_order', { ascending: false })
         .order('created_at', { ascending: false }),
       supabase.from('suppliers').select('id, name').order('name'),
       supabase.from('product_categories').select('id, name').order('name'),
@@ -86,6 +111,27 @@ export default function ProductsPage() {
   }
 
   useEffect(() => { fetchAll() }, [])
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    setProducts(items => {
+      const oldIndex = items.findIndex(i => i.id === active.id)
+      const newIndex = items.findIndex(i => i.id === over.id)
+      return arrayMove(items, oldIndex, newIndex)
+    })
+  }
+
+  const saveSortOrder = async () => {
+    setSortSaving(true)
+    await Promise.all(
+      products.map((p, i) =>
+        supabase.from('products').update({ sort_order: products.length - i }).eq('id', p.id)
+      )
+    )
+    setSortSaving(false)
+    setSortMode(false)
+  }
 
   // ── 商品 CRUD ────────────────────────────────────────────────────────────────
 
@@ -217,15 +263,29 @@ export default function ProductsPage() {
           <p className="text-gray-500 text-sm mt-1">管理販售商品、供應商與類別</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={openSupplierDialog}>
-            <Settings2 className="h-4 w-4 mr-1.5" />供應商
-          </Button>
-          <Button variant="outline" onClick={openCategoryDialog}>
-            <Settings2 className="h-4 w-4 mr-1.5" />類別
-          </Button>
-          <Button onClick={openCreate}>
-            <Plus className="h-4 w-4 mr-2" />新增商品
-          </Button>
+          {sortMode ? (
+            <>
+              <Button variant="outline" onClick={() => { setSortMode(false); fetchAll() }}>取消</Button>
+              <Button onClick={saveSortOrder} disabled={sortSaving}>
+                {sortSaving ? '儲存中...' : '完成排序'}
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="outline" onClick={openSupplierDialog}>
+                <Settings2 className="h-4 w-4 mr-1.5" />供應商
+              </Button>
+              <Button variant="outline" onClick={openCategoryDialog}>
+                <Settings2 className="h-4 w-4 mr-1.5" />類別
+              </Button>
+              <Button variant="outline" onClick={() => setSortMode(true)}>
+                <ArrowUpDown className="h-4 w-4 mr-1.5" />排序
+              </Button>
+              <Button onClick={openCreate}>
+                <Plus className="h-4 w-4 mr-2" />新增商品
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
@@ -234,6 +294,7 @@ export default function ProductsPage() {
         <Table>
           <TableHeader>
             <TableRow>
+              {sortMode && <TableHead className="w-8"></TableHead>}
               <TableHead className="w-12"></TableHead>
               <TableHead>商品名稱</TableHead>
               <TableHead>類別</TableHead>
@@ -242,63 +303,73 @@ export default function ProductsPage() {
               <TableHead>成本價</TableHead>
               <TableHead>毛利率</TableHead>
               <TableHead>狀態</TableHead>
-              <TableHead>建立時間</TableHead>
-              <TableHead></TableHead>
+              {!sortMode && <TableHead>建立時間</TableHead>}
+              {!sortMode && <TableHead></TableHead>}
             </TableRow>
           </TableHeader>
-          <TableBody>
-            {loading ? (
-              <TableRow><TableCell colSpan={10} className="text-center py-10 text-gray-400">載入中...</TableCell></TableRow>
-            ) : products.length === 0 ? (
-              <TableRow><TableCell colSpan={10} className="text-center py-10 text-gray-400">尚無商品</TableCell></TableRow>
-            ) : products.map(p => {
-              const m = margin(p)
-              return (
-                <TableRow key={p.id}>
-                  <TableCell>
-                    {p.images?.[0]
-                      ? <img src={p.images[0]} alt="" className="w-10 h-10 object-cover rounded-md border" />
-                      : <div className="w-10 h-10 bg-gray-100 rounded-md border flex items-center justify-center"><ImageIcon className="w-4 h-4 text-gray-300" /></div>
-                    }
-                  </TableCell>
-                  <TableCell className="font-medium">{p.name}</TableCell>
-                  <TableCell className="text-gray-500">
-                    {p.product_categories?.name ?? <span className="text-gray-300">—</span>}
-                  </TableCell>
-                  <TableCell className="text-gray-500">
-                    {p.suppliers?.name ?? <span className="text-gray-300">—</span>}
-                  </TableCell>
-                  <TableCell className="font-medium">NT$ {p.price.toLocaleString()}</TableCell>
-                  <TableCell className="text-gray-500">
-                    {p.cost_price != null ? `NT$ ${p.cost_price.toLocaleString()}` : <span className="text-gray-300">—</span>}
-                  </TableCell>
-                  <TableCell>
-                    {m != null ? (
-                      <span className={`text-sm font-medium ${m >= 30 ? 'text-green-600' : m >= 10 ? 'text-yellow-600' : 'text-red-500'}`}>
-                        {m}%
-                      </span>
-                    ) : <span className="text-gray-300">—</span>}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={p.is_active ? 'default' : 'secondary'}>
-                      {p.is_active ? '上架' : '下架'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-gray-400">{new Date(p.created_at).toLocaleDateString('zh-TW')}</TableCell>
-                  <TableCell>
-                    <div className="flex gap-1">
-                      <Button variant="ghost" size="sm" onClick={() => openEdit(p)}>
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => handleDelete(p)}>
-                        <Trash2 className="h-4 w-4 text-red-400" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              )
-            })}
-          </TableBody>
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={products.map(p => p.id)} strategy={verticalListSortingStrategy}>
+              <TableBody>
+                {loading ? (
+                  <TableRow><TableCell colSpan={10} className="text-center py-10 text-gray-400">載入中...</TableCell></TableRow>
+                ) : products.length === 0 ? (
+                  <TableRow><TableCell colSpan={10} className="text-center py-10 text-gray-400">尚無商品</TableCell></TableRow>
+                ) : products.map(p => {
+                  const m = margin(p)
+                  const cells = (
+                    <>
+                      <TableCell>
+                        {p.images?.[0]
+                          ? <img src={p.images[0]} alt="" className="w-10 h-10 object-cover rounded-md border" />
+                          : <div className="w-10 h-10 bg-gray-100 rounded-md border flex items-center justify-center"><ImageIcon className="w-4 h-4 text-gray-300" /></div>
+                        }
+                      </TableCell>
+                      <TableCell className="font-medium">{p.name}</TableCell>
+                      <TableCell className="text-gray-500">{p.product_categories?.name ?? <span className="text-gray-300">—</span>}</TableCell>
+                      <TableCell className="text-gray-500">{p.suppliers?.name ?? <span className="text-gray-300">—</span>}</TableCell>
+                      <TableCell className="font-medium">NT$ {p.price.toLocaleString()}</TableCell>
+                      <TableCell className="text-gray-500">
+                        {p.cost_price != null ? `NT$ ${p.cost_price.toLocaleString()}` : <span className="text-gray-300">—</span>}
+                      </TableCell>
+                      <TableCell>
+                        {m != null
+                          ? <span className={`text-sm font-medium ${m >= 30 ? 'text-green-600' : m >= 10 ? 'text-yellow-600' : 'text-red-500'}`}>{m}%</span>
+                          : <span className="text-gray-300">—</span>}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={p.is_active ? 'default' : 'secondary'}>{p.is_active ? '上架' : '下架'}</Badge>
+                      </TableCell>
+                      {!sortMode && <TableCell className="text-gray-400">{new Date(p.created_at).toLocaleDateString('zh-TW')}</TableCell>}
+                      {!sortMode && (
+                        <TableCell>
+                          <div className="flex gap-1">
+                            <Button variant="ghost" size="sm" onClick={() => openEdit(p)}><Pencil className="h-4 w-4" /></Button>
+                            <Button variant="ghost" size="sm" onClick={() => handleDelete(p)}><Trash2 className="h-4 w-4 text-red-400" /></Button>
+                          </div>
+                        </TableCell>
+                      )}
+                    </>
+                  )
+                  return sortMode ? (
+                    <SortableRow key={p.id} id={p.id}>
+                      {(handleProps) => (
+                        <>
+                          <TableCell className="w-8">
+                            <button {...handleProps} className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600">
+                              <GripVertical className="h-4 w-4" />
+                            </button>
+                          </TableCell>
+                          {cells}
+                        </>
+                      )}
+                    </SortableRow>
+                  ) : (
+                    <TableRow key={p.id}>{cells}</TableRow>
+                  )
+                })}
+              </TableBody>
+            </SortableContext>
+          </DndContext>
         </Table>
       </div>
 

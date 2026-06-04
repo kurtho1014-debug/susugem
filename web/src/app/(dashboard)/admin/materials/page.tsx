@@ -15,8 +15,28 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
-import { Plus, Pencil, ImageIcon, Trash2, Settings2 } from 'lucide-react'
+import { Plus, Pencil, ImageIcon, Trash2, Settings2, GripVertical, ArrowUpDown } from 'lucide-react'
 import { ImageUploader } from '@/components/image-uploader'
+import {
+  DndContext, closestCenter, PointerSensor, useSensor, useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  SortableContext, verticalListSortingStrategy, useSortable, arrayMove,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+
+function SortableRow({ id, children }: { id: string; children: (h: Record<string, unknown>) => React.ReactNode }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
+  return (
+    <TableRow
+      ref={setNodeRef as React.Ref<HTMLTableRowElement>}
+      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }}
+    >
+      {children({ ...attributes, ...listeners })}
+    </TableRow>
+  )
+}
 
 type Supplier = { id: string; name: string }
 type Category = { id: string; name: string }
@@ -51,6 +71,9 @@ export default function MaterialsPage() {
   const [saving, setSaving] = useState(false)
   const [editing, setEditing] = useState<Material | null>(null)
   const [form, setForm] = useState(emptyForm)
+  const [sortMode, setSortMode] = useState(false)
+  const [sortSaving, setSortSaving] = useState(false)
+  const sensors = useSensors(useSensor(PointerSensor))
 
   // 供應商管理 dialog
   const [supplierDialogOpen, setSupplierDialogOpen] = useState(false)
@@ -83,6 +106,27 @@ export default function MaterialsPage() {
   }
 
   useEffect(() => { fetchAll() }, [])
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    setMaterials(items => {
+      const oldIndex = items.findIndex(i => i.id === active.id)
+      const newIndex = items.findIndex(i => i.id === over.id)
+      return arrayMove(items, oldIndex, newIndex)
+    })
+  }
+
+  const saveSortOrder = async () => {
+    setSortSaving(true)
+    await Promise.all(
+      materials.map((m, i) =>
+        supabase.from('materials').update({ sort_order: materials.length - i }).eq('id', m.id)
+      )
+    )
+    setSortSaving(false)
+    setSortMode(false)
+  }
 
   // ── 包材 CRUD ────────────────────────────────────────────────────────────────
 
@@ -208,15 +252,29 @@ export default function MaterialsPage() {
           <p className="text-gray-500 text-sm mt-1">管理包材、供應商與類別</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={openSupplierDialog}>
-            <Settings2 className="h-4 w-4 mr-1.5" />供應商
-          </Button>
-          <Button variant="outline" onClick={openCategoryDialog}>
-            <Settings2 className="h-4 w-4 mr-1.5" />類別
-          </Button>
-          <Button onClick={openCreate}>
-            <Plus className="h-4 w-4 mr-2" />新增包材
-          </Button>
+          {sortMode ? (
+            <>
+              <Button variant="outline" onClick={() => { setSortMode(false); fetchAll() }}>取消</Button>
+              <Button onClick={saveSortOrder} disabled={sortSaving}>
+                {sortSaving ? '儲存中...' : '完成排序'}
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="outline" onClick={openSupplierDialog}>
+                <Settings2 className="h-4 w-4 mr-1.5" />供應商
+              </Button>
+              <Button variant="outline" onClick={openCategoryDialog}>
+                <Settings2 className="h-4 w-4 mr-1.5" />類別
+              </Button>
+              <Button variant="outline" onClick={() => setSortMode(true)}>
+                <ArrowUpDown className="h-4 w-4 mr-1.5" />排序
+              </Button>
+              <Button onClick={openCreate}>
+                <Plus className="h-4 w-4 mr-2" />新增包材
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
@@ -225,6 +283,7 @@ export default function MaterialsPage() {
         <Table>
           <TableHeader>
             <TableRow>
+              {sortMode && <TableHead className="w-8"></TableHead>}
               <TableHead className="w-12"></TableHead>
               <TableHead>包材名稱</TableHead>
               <TableHead>類別</TableHead>
@@ -232,36 +291,60 @@ export default function MaterialsPage() {
               <TableHead>單位</TableHead>
               <TableHead>單價</TableHead>
               <TableHead>庫存</TableHead>
-              <TableHead></TableHead>
+              {!sortMode && <TableHead></TableHead>}
             </TableRow>
           </TableHeader>
-          <TableBody>
-            {loading ? (
-              <TableRow><TableCell colSpan={8} className="text-center py-10 text-gray-400">載入中...</TableCell></TableRow>
-            ) : materials.length === 0 ? (
-              <TableRow><TableCell colSpan={8} className="text-center py-10 text-gray-400">尚無包材</TableCell></TableRow>
-            ) : materials.map(m => (
-              <TableRow key={m.id}>
-                <TableCell>
-                  {m.images?.[0]
-                    ? <img src={m.images[0]} alt="" className="w-10 h-10 object-cover rounded-md border" />
-                    : <div className="w-10 h-10 bg-gray-100 rounded-md border flex items-center justify-center"><ImageIcon className="w-4 h-4 text-gray-300" /></div>
-                  }
-                </TableCell>
-                <TableCell className="font-medium">{m.name}</TableCell>
-                <TableCell className="text-gray-500">{m.material_categories?.name ?? <span className="text-gray-300">—</span>}</TableCell>
-                <TableCell className="text-gray-500">{m.suppliers?.name ?? <span className="text-gray-300">—</span>}</TableCell>
-                <TableCell>{m.unit}</TableCell>
-                <TableCell>NT$ {m.unit_price.toLocaleString()}</TableCell>
-                <TableCell>{m.stock_quantity.toLocaleString()}</TableCell>
-                <TableCell>
-                  <Button variant="ghost" size="sm" onClick={() => openEdit(m)}>
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={materials.map(m => m.id)} strategy={verticalListSortingStrategy}>
+              <TableBody>
+                {loading ? (
+                  <TableRow><TableCell colSpan={9} className="text-center py-10 text-gray-400">載入中...</TableCell></TableRow>
+                ) : materials.length === 0 ? (
+                  <TableRow><TableCell colSpan={9} className="text-center py-10 text-gray-400">尚無包材</TableCell></TableRow>
+                ) : materials.map(m => {
+                  const cells = (
+                    <>
+                      <TableCell>
+                        {m.images?.[0]
+                          ? <img src={m.images[0]} alt="" className="w-10 h-10 object-cover rounded-md border" />
+                          : <div className="w-10 h-10 bg-gray-100 rounded-md border flex items-center justify-center"><ImageIcon className="w-4 h-4 text-gray-300" /></div>
+                        }
+                      </TableCell>
+                      <TableCell className="font-medium">{m.name}</TableCell>
+                      <TableCell className="text-gray-500">{m.material_categories?.name ?? <span className="text-gray-300">—</span>}</TableCell>
+                      <TableCell className="text-gray-500">{m.suppliers?.name ?? <span className="text-gray-300">—</span>}</TableCell>
+                      <TableCell>{m.unit}</TableCell>
+                      <TableCell>NT$ {m.unit_price.toLocaleString()}</TableCell>
+                      <TableCell>{m.stock_quantity.toLocaleString()}</TableCell>
+                      {!sortMode && (
+                        <TableCell>
+                          <Button variant="ghost" size="sm" onClick={() => openEdit(m)}>
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      )}
+                    </>
+                  )
+                  return sortMode ? (
+                    <SortableRow key={m.id} id={m.id}>
+                      {(handleProps) => (
+                        <>
+                          <TableCell className="w-8">
+                            <button {...handleProps} className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600">
+                              <GripVertical className="h-4 w-4" />
+                            </button>
+                          </TableCell>
+                          {cells}
+                        </>
+                      )}
+                    </SortableRow>
+                  ) : (
+                    <TableRow key={m.id}>{cells}</TableRow>
+                  )
+                })}
+              </TableBody>
+            </SortableContext>
+          </DndContext>
         </Table>
       </div>
 

@@ -162,8 +162,10 @@ export default function OrdersPage() {
   const [freeMaterialSearchOpen, setFreeMaterialSearchOpen] = useState(false)
 
   // 篩選
+  const [searchName, setSearchName] = useState('')
   const [filterActivity, setFilterActivity] = useState('all')
   const [filterStatus, setFilterStatus] = useState('all')
+  const [filterPaymentStatus, setFilterPaymentStatus] = useState('all')
 
   const supabase = createClient()
 
@@ -181,6 +183,7 @@ export default function OrdersPage() {
 
     if (filterActivity !== 'all') query = query.eq('activity_id', filterActivity)
     if (filterStatus !== 'all') query = query.eq('order_status', filterStatus)
+    if (filterPaymentStatus !== 'all') query = query.eq('payment_status', filterPaymentStatus)
 
     const { data, error } = await query
     if (!error && data) setOrders(data as Order[])
@@ -279,7 +282,7 @@ export default function OrdersPage() {
 
   useEffect(() => {
     fetchOrders()
-  }, [filterActivity, filterStatus])
+  }, [filterActivity, filterStatus, filterPaymentStatus])
 
   const searchProducts = async (q: string) => {
     if (!q.trim()) { setFreeProductResults([]); return }
@@ -518,8 +521,28 @@ export default function OrdersPage() {
       </div>
 
       {/* 篩選 */}
-      <div className="flex gap-4">
-        <div className="w-48">
+      <div className="flex flex-wrap gap-3">
+        {/* 客戶姓名搜尋 */}
+        <div className="relative w-48">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+          <Input
+            className="pl-9"
+            placeholder="搜尋客戶姓名..."
+            value={searchName}
+            onChange={e => setSearchName(e.target.value)}
+          />
+          {searchName && (
+            <button
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              onClick={() => setSearchName('')}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+
+        {/* 活動篩選 */}
+        <div className="w-44">
           <Select value={filterActivity} onValueChange={v => setFilterActivity(v ?? 'all')}>
             <SelectTrigger>
               <SelectValue placeholder="所有活動" />
@@ -532,14 +555,31 @@ export default function OrdersPage() {
             </SelectContent>
           </Select>
         </div>
-        <div className="w-40">
+
+        {/* 訂單狀態 */}
+        <div className="w-36">
           <Select value={filterStatus} onValueChange={v => setFilterStatus(v ?? 'all')}>
             <SelectTrigger>
-              <SelectValue placeholder="所有狀態" />
+              <SelectValue placeholder="訂單狀態" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">所有狀態</SelectItem>
+              <SelectItem value="all">所有訂單狀態</SelectItem>
               {orderStatusOptions.map(o => (
+                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* 付款狀態 */}
+        <div className="w-36">
+          <Select value={filterPaymentStatus} onValueChange={v => setFilterPaymentStatus(v ?? 'all')}>
+            <SelectTrigger>
+              <SelectValue placeholder="付款狀態" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">所有付款狀態</SelectItem>
+              {paymentStatusOptions.map(o => (
                 <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
               ))}
             </SelectContent>
@@ -561,16 +601,19 @@ export default function OrdersPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {loading ? (
-              <TableRow>
-                <TableCell colSpan={6} className="text-center py-10 text-gray-400">載入中...</TableCell>
-              </TableRow>
-            ) : orders.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={6} className="text-center py-10 text-gray-400">尚無訂單</TableCell>
-              </TableRow>
-            ) : (
-              orders.map(order => (
+            {(() => {
+              const filtered = searchName.trim()
+                ? orders.filter(o => o.customer_name.includes(searchName.trim()))
+                : orders
+              return loading ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center py-10 text-gray-400">載入中...</TableCell>
+                </TableRow>
+              ) : filtered.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center py-10 text-gray-400">沒有符合的訂單</TableCell>
+                </TableRow>
+              ) : filtered.map(order => (
                 <TableRow
                   key={order.id}
                   className="cursor-pointer hover:bg-gray-50"
@@ -594,7 +637,7 @@ export default function OrdersPage() {
                   </TableCell>
                 </TableRow>
               ))
-            )}
+            })()}
           </TableBody>
         </Table>
       </div>
