@@ -28,7 +28,15 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
-import { Plus, Trash2 } from 'lucide-react'
+import { Plus, Trash2, Search } from 'lucide-react'
+
+type Member = {
+  id: string
+  name: string
+  phone: string | null
+  email: string | null
+  address: string | null
+}
 
 type Order = {
   id: string
@@ -64,6 +72,12 @@ type OrderMaterial = {
 }
 
 type Material = { id: string; name: string; unit: string }
+
+type Product = { id: string; name: string; price: number }
+type DeliveryMethod = { id: string; name: string; default_fee: number }
+
+type FreeItem = { product_id: string; product_name: string; quantity: number; unit_price: number }
+type FreeMaterial = { material_id: string; material_name: string; unit: string; quantity: number; notes: string }
 
 type CreateActivityProduct = {
   id: string; product_id: string; custom_price: number; stock_limit: number | null
@@ -121,6 +135,25 @@ export default function OrdersPage() {
   const [createCustomer, setCreateCustomer] = useState({ name: '', phone: '', email: '', address: '', notes: '' })
   const [createSaving, setCreateSaving] = useState(false)
 
+  // 會員搜尋
+  const [memberSearch, setMemberSearch] = useState('')
+  const [memberResults, setMemberResults] = useState<Member[]>([])
+  const [memberSearchOpen, setMemberSearchOpen] = useState(false)
+
+  // 自由模式
+  const [createMode, setCreateMode] = useState<'activity' | 'free'>('activity')
+  const [allDeliveryMethods, setAllDeliveryMethods] = useState<DeliveryMethod[]>([])
+  const [freeDeliveryId, setFreeDeliveryId] = useState('')
+  const [freeDeliveryFee, setFreeDeliveryFee] = useState('0')
+  const [freeItems, setFreeItems] = useState<FreeItem[]>([])
+  const [freeProductSearch, setFreeProductSearch] = useState('')
+  const [freeProductResults, setFreeProductResults] = useState<Product[]>([])
+  const [freeProductSearchOpen, setFreeProductSearchOpen] = useState(false)
+  const [freeMaterials, setFreeMaterials] = useState<FreeMaterial[]>([])
+  const [freeMaterialSearch, setFreeMaterialSearch] = useState('')
+  const [freeMaterialResults, setFreeMaterialResults] = useState<Material[]>([])
+  const [freeMaterialSearchOpen, setFreeMaterialSearchOpen] = useState(false)
+
   // 篩選
   const [filterActivity, setFilterActivity] = useState('all')
   const [filterStatus, setFilterStatus] = useState('all')
@@ -155,6 +188,11 @@ export default function OrdersPage() {
   const fetchAllMaterials = async () => {
     const { data } = await supabase.from('materials').select('id, name, unit').order('name')
     if (data) setAllMaterials(data)
+  }
+
+  const fetchAllDeliveryMethods = async () => {
+    const { data } = await supabase.from('delivery_methods').select('id, name, default_fee').eq('is_active', true).order('name')
+    if (data) setAllDeliveryMethods(data)
   }
 
   const fetchOrderMaterials = async (orderId: string) => {
@@ -198,11 +236,69 @@ export default function OrdersPage() {
   useEffect(() => {
     fetchActivities()
     fetchAllMaterials()
+    fetchAllDeliveryMethods()
   }, [])
 
   useEffect(() => {
     fetchOrders()
   }, [filterActivity, filterStatus])
+
+  const searchProducts = async (q: string) => {
+    if (!q.trim()) { setFreeProductResults([]); return }
+    const { data } = await supabase.from('products').select('id, name, price').ilike('name', `%${q}%`).eq('is_active', true).limit(8)
+    if (data) setFreeProductResults(data)
+  }
+
+  const addFreeItem = (p: Product) => {
+    setFreeItems(prev => {
+      const existing = prev.find(i => i.product_id === p.id)
+      if (existing) return prev.map(i => i.product_id === p.id ? { ...i, quantity: i.quantity + 1 } : i)
+      return [...prev, { product_id: p.id, product_name: p.name, quantity: 1, unit_price: p.price }]
+    })
+    setFreeProductSearch('')
+    setFreeProductResults([])
+    setFreeProductSearchOpen(false)
+  }
+
+  const searchFreeMaterials = async (q: string) => {
+    if (!q.trim()) { setFreeMaterialResults([]); return }
+    const { data } = await supabase.from('materials').select('id, name, unit').ilike('name', `%${q}%`).limit(8)
+    if (data) setFreeMaterialResults(data)
+  }
+
+  const addFreeMaterial = (m: Material) => {
+    setFreeMaterials(prev => {
+      const existing = prev.find(i => i.material_id === m.id)
+      if (existing) return prev.map(i => i.material_id === m.id ? { ...i, quantity: i.quantity + 1 } : i)
+      return [...prev, { material_id: m.id, material_name: m.name, unit: m.unit, quantity: 1, notes: '' }]
+    })
+    setFreeMaterialSearch('')
+    setFreeMaterialResults([])
+    setFreeMaterialSearchOpen(false)
+  }
+
+  const searchMembers = async (q: string) => {
+    if (!q.trim()) { setMemberResults([]); return }
+    const { data } = await supabase
+      .from('members')
+      .select('id, name, phone, email, address')
+      .or(`name.ilike.%${q}%,phone.ilike.%${q}%`)
+      .limit(8)
+    if (data) setMemberResults(data)
+  }
+
+  const importMember = (m: Member) => {
+    setCreateCustomer(prev => ({
+      ...prev,
+      name: m.name,
+      phone: m.phone ?? prev.phone,
+      email: m.email ?? prev.email,
+      address: m.address ?? prev.address,
+    }))
+    setMemberSearch('')
+    setMemberResults([])
+    setMemberSearchOpen(false)
+  }
 
   // 新增訂單
   const openCreate = () => {
@@ -213,6 +309,18 @@ export default function OrdersPage() {
     setCreateQuantities({})
     setCreateDeliveryId('')
     setCreateCustomer({ name: '', phone: '', email: '', address: '', notes: '' })
+    setMemberSearch('')
+    setMemberResults([])
+    setMemberSearchOpen(false)
+    setCreateMode('activity')
+    setFreeItems([])
+    setFreeMaterials([])
+    setFreeDeliveryId('')
+    setFreeDeliveryFee('0')
+    setFreeProductSearch('')
+    setFreeProductResults([])
+    setFreeMaterialSearch('')
+    setFreeMaterialResults([])
   }
 
   const fetchActivityData = async (activityId: string) => {
@@ -264,6 +372,54 @@ export default function OrdersPage() {
       subtotal: createQuantities[ap.product_id] * ap.custom_price,
     }))
     if (items.length > 0) await supabase.from('order_items').insert(items)
+    setCreateSaving(false)
+    setCreateDialogOpen(false)
+    fetchOrders()
+  }
+
+  const handleCreateFreeOrder = async () => {
+    if (!createCustomer.name.trim() || !createCustomer.phone.trim()) return
+    const dm = allDeliveryMethods.find(d => d.id === freeDeliveryId)
+    const deliveryFee = parseFloat(freeDeliveryFee) || 0
+    const subtotal = freeItems.reduce((s, i) => s + i.quantity * i.unit_price, 0)
+    const total = subtotal + deliveryFee
+    setCreateSaving(true)
+    const { data: orderData, error: orderErr } = await supabase.from('orders').insert({
+      activity_id: null,
+      customer_name: createCustomer.name.trim(),
+      customer_phone: createCustomer.phone.trim(),
+      customer_email: createCustomer.email.trim() || null,
+      customer_address: createCustomer.address.trim() || null,
+      delivery_method_id: dm?.id ?? null,
+      delivery_fee: deliveryFee,
+      subtotal, total,
+      notes: createCustomer.notes.trim() || null,
+      order_status: 'pending',
+      payment_status: 'unpaid',
+    }).select().single()
+    if (orderErr || !orderData) {
+      alert('建立失敗：' + (orderErr?.message ?? '未知錯誤'))
+      setCreateSaving(false)
+      return
+    }
+    if (freeItems.length > 0) {
+      await supabase.from('order_items').insert(freeItems.map(i => ({
+        order_id: orderData.id,
+        product_id: i.product_id,
+        product_name: i.product_name,
+        quantity: i.quantity,
+        unit_price: i.unit_price,
+        subtotal: i.quantity * i.unit_price,
+      })))
+    }
+    if (freeMaterials.length > 0) {
+      await supabase.from('order_materials').insert(freeMaterials.map(m => ({
+        order_id: orderData.id,
+        material_id: m.material_id,
+        quantity: m.quantity,
+        notes: m.notes || null,
+      })))
+    }
     setCreateSaving(false)
     setCreateDialogOpen(false)
     fetchOrders()
@@ -619,30 +775,54 @@ export default function OrdersPage() {
           </DialogHeader>
           <div className="space-y-5 py-2">
 
-            {/* 選擇活動 */}
-            <div className="space-y-2">
-              <Label>活動 *</Label>
-              <Select value={createActivityId} onValueChange={v => {
-                if (!v) return
-                setCreateActivityId(v)
-                fetchActivityData(v)
-              }}>
-                <SelectTrigger>
-                  <SelectValue placeholder="選擇活動">
-                    {createActivityId
-                      ? activities.find(a => a.id === createActivityId)?.name ?? '選擇活動'
-                      : '選擇活動'}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {activities.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
+            {/* 模式切換 */}
+            <div className="flex gap-1 p-1 bg-gray-100 rounded-lg">
+              <button type="button"
+                className={`flex-1 py-1.5 text-sm rounded-md transition-colors ${createMode === 'activity' ? 'bg-white shadow-sm font-medium' : 'text-gray-500 hover:text-gray-700'}`}
+                onClick={() => setCreateMode('activity')}>
+                活動模式
+              </button>
+              <button type="button"
+                className={`flex-1 py-1.5 text-sm rounded-md transition-colors ${createMode === 'free' ? 'bg-white shadow-sm font-medium' : 'text-gray-500 hover:text-gray-700'}`}
+                onClick={() => setCreateMode('free')}>
+                自由模式
+              </button>
             </div>
 
-            {/* 客戶資料 */}
+            {/* 客戶資料（共用） */}
             <div className="space-y-3">
               <p className="text-sm font-semibold text-gray-500">客戶資料</p>
+
+              {/* 從會員導入 */}
+              <div className="relative">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Input
+                    className="pl-9"
+                    placeholder="從會員搜尋並帶入資料（姓名或電話）"
+                    value={memberSearch}
+                    onChange={e => {
+                      setMemberSearch(e.target.value)
+                      setMemberSearchOpen(true)
+                      searchMembers(e.target.value)
+                    }}
+                    onFocus={() => memberSearch && setMemberSearchOpen(true)}
+                  />
+                </div>
+                {memberSearchOpen && memberResults.length > 0 && (
+                  <div className="absolute z-50 top-full mt-1 w-full bg-white border rounded-lg shadow-md max-h-48 overflow-y-auto">
+                    {memberResults.map(m => (
+                      <button key={m.id} type="button"
+                        className="w-full text-left px-3 py-2 hover:bg-gray-50 text-sm border-b last:border-0"
+                        onClick={() => importMember(m)}>
+                        <span className="font-medium">{m.name}</span>
+                        {m.phone && <span className="text-gray-400 ml-2">{m.phone}</span>}
+                        {m.email && <span className="text-gray-400 ml-2 text-xs">{m.email}</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label>姓名 *</Label>
@@ -667,77 +847,88 @@ export default function OrdersPage() {
               </div>
             </div>
 
-            {/* 商品選擇 */}
-            {createProducts.length > 0 && (
+            {/* ── 活動模式 ── */}
+            {createMode === 'activity' && (<>
               <div className="space-y-2">
-                <p className="text-sm font-semibold text-gray-500">商品</p>
-                <div className="border rounded-lg divide-y">
-                  {createProducts.map(ap => (
-                    <div key={ap.id} className="flex items-center justify-between px-3 py-2.5">
-                      <div>
-                        <span className="text-sm font-medium">{ap.products.name}</span>
-                        <span className="text-xs text-gray-400 ml-2">NT$ {ap.custom_price.toLocaleString()}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button className="w-6 h-6 rounded-full border flex items-center justify-center text-sm hover:bg-gray-100 disabled:opacity-30"
-                          disabled={(createQuantities[ap.product_id] ?? 0) === 0}
-                          onClick={() => setCreateQuantities(prev => ({ ...prev, [ap.product_id]: Math.max(0, (prev[ap.product_id] ?? 0) - 1) }))}>
-                          −
-                        </button>
-                        <span className="w-6 text-center text-sm">{createQuantities[ap.product_id] ?? 0}</span>
-                        <button className="w-6 h-6 rounded-full border flex items-center justify-center text-sm hover:bg-gray-100 disabled:opacity-30"
-                          disabled={ap.stock_limit != null && (createQuantities[ap.product_id] ?? 0) >= ap.stock_limit}
-                          onClick={() => setCreateQuantities(prev => ({ ...prev, [ap.product_id]: Math.min((prev[ap.product_id] ?? 0) + 1, ap.stock_limit ?? Infinity) }))}>
-                          +
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <Label>活動 *</Label>
+                <Select value={createActivityId} onValueChange={v => {
+                  if (!v) return
+                  setCreateActivityId(v)
+                  fetchActivityData(v)
+                }}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="選擇活動">
+                      {createActivityId
+                        ? activities.find(a => a.id === createActivityId)?.name ?? '選擇活動'
+                        : '選擇活動'}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {activities.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
               </div>
-            )}
 
-            {/* 物流方式 */}
-            {createDeliveryMethods.length > 0 && (
-              <div className="space-y-2">
-                <Label>物流方式 *</Label>
-                <div className="space-y-1.5">
-                  {createDeliveryMethods.map(dm => {
-                    const fee = dm.custom_fee ?? dm.delivery_methods.default_fee
-                    return (
-                      <label key={dm.id}
-                        className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors
-                          ${createDeliveryId === dm.id ? 'border-blue-500 bg-blue-50' : 'hover:bg-gray-50'}`}>
-                        <div className="flex items-center gap-2">
-                          <input type="radio" name="createDelivery" value={dm.id}
-                            checked={createDeliveryId === dm.id}
-                            onChange={() => setCreateDeliveryId(dm.id)} />
-                          <span className="text-sm">{dm.delivery_methods.name}</span>
+              {createProducts.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold text-gray-500">商品</p>
+                  <div className="border rounded-lg divide-y">
+                    {createProducts.map(ap => (
+                      <div key={ap.id} className="flex items-center justify-between px-3 py-2.5">
+                        <div>
+                          <span className="text-sm font-medium">{ap.products.name}</span>
+                          <span className="text-xs text-gray-400 ml-2">NT$ {ap.custom_price.toLocaleString()}</span>
                         </div>
-                        <span className="text-sm text-gray-500">{fee === 0 ? '免運' : `NT$ ${fee}`}</span>
-                      </label>
-                    )
-                  })}
+                        <div className="flex items-center gap-2">
+                          <button className="w-6 h-6 rounded-full border flex items-center justify-center text-sm hover:bg-gray-100 disabled:opacity-30"
+                            disabled={(createQuantities[ap.product_id] ?? 0) === 0}
+                            onClick={() => setCreateQuantities(prev => ({ ...prev, [ap.product_id]: Math.max(0, (prev[ap.product_id] ?? 0) - 1) }))}>
+                            −
+                          </button>
+                          <span className="w-6 text-center text-sm">{createQuantities[ap.product_id] ?? 0}</span>
+                          <button className="w-6 h-6 rounded-full border flex items-center justify-center text-sm hover:bg-gray-100 disabled:opacity-30"
+                            disabled={ap.stock_limit != null && (createQuantities[ap.product_id] ?? 0) >= ap.stock_limit}
+                            onClick={() => setCreateQuantities(prev => ({ ...prev, [ap.product_id]: Math.min((prev[ap.product_id] ?? 0) + 1, ap.stock_limit ?? Infinity) }))}>
+                            +
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* 備註 */}
-            <div className="space-y-1.5">
-              <Label>備註</Label>
-              <Textarea placeholder="選填" rows={2} value={createCustomer.notes}
-                onChange={e => setCreateCustomer({ ...createCustomer, notes: e.target.value })} />
-            </div>
+              {createDeliveryMethods.length > 0 && (
+                <div className="space-y-2">
+                  <Label>物流方式 *</Label>
+                  <div className="space-y-1.5">
+                    {createDeliveryMethods.map(dm => {
+                      const fee = dm.custom_fee ?? dm.delivery_methods.default_fee
+                      return (
+                        <label key={dm.id}
+                          className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors
+                            ${createDeliveryId === dm.id ? 'border-blue-500 bg-blue-50' : 'hover:bg-gray-50'}`}>
+                          <div className="flex items-center gap-2">
+                            <input type="radio" name="createDelivery" value={dm.id}
+                              checked={createDeliveryId === dm.id}
+                              onChange={() => setCreateDeliveryId(dm.id)} />
+                            <span className="text-sm">{dm.delivery_methods.name}</span>
+                          </div>
+                          <span className="text-sm text-gray-500">{fee === 0 ? '免運' : `NT$ ${fee}`}</span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
 
-            {/* 金額小計 */}
-            {createActivityId && (
-              <div className="bg-gray-50 rounded-lg px-4 py-3 space-y-1 text-sm">
-                {(() => {
-                  const subtotal = createProducts.reduce((s, ap) => s + (createQuantities[ap.product_id] ?? 0) * ap.custom_price, 0)
-                  const dm = createDeliveryMethods.find(d => d.id === createDeliveryId)
-                  const fee = dm?.custom_fee ?? dm?.delivery_methods.default_fee ?? 0
-                  return (
-                    <>
+              {createActivityId && (
+                <div className="bg-gray-50 rounded-lg px-4 py-3 space-y-1 text-sm">
+                  {(() => {
+                    const subtotal = createProducts.reduce((s, ap) => s + (createQuantities[ap.product_id] ?? 0) * ap.custom_price, 0)
+                    const dm = createDeliveryMethods.find(d => d.id === createDeliveryId)
+                    const fee = dm?.custom_fee ?? dm?.delivery_methods.default_fee ?? 0
+                    return (<>
                       <div className="flex justify-between text-gray-500">
                         <span>商品小計</span><span>NT$ {subtotal.toLocaleString()}</span>
                       </div>
@@ -747,19 +938,218 @@ export default function OrdersPage() {
                       <div className="flex justify-between font-bold pt-1 border-t">
                         <span>合計</span><span>NT$ {(subtotal + fee).toLocaleString()}</span>
                       </div>
-                    </>
-                  )
+                    </>)
+                  })()}
+                </div>
+              )}
+            </>)}
+
+            {/* ── 自由模式 ── */}
+            {createMode === 'free' && (<>
+
+              {/* 商品搜尋 */}
+              <div className="space-y-2">
+                <p className="text-sm font-semibold text-gray-500">商品</p>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Input
+                    className="pl-9"
+                    placeholder="搜尋商品名稱..."
+                    value={freeProductSearch}
+                    onChange={e => {
+                      setFreeProductSearch(e.target.value)
+                      setFreeProductSearchOpen(true)
+                      searchProducts(e.target.value)
+                    }}
+                    onFocus={() => freeProductSearch && setFreeProductSearchOpen(true)}
+                  />
+                  {freeProductSearchOpen && freeProductResults.length > 0 && (
+                    <div className="absolute z-50 top-full mt-1 w-full bg-white border rounded-lg shadow-md max-h-48 overflow-y-auto">
+                      {freeProductResults.map(p => (
+                        <button key={p.id} type="button"
+                          className="w-full text-left px-3 py-2 hover:bg-gray-50 text-sm border-b last:border-0"
+                          onClick={() => addFreeItem(p)}>
+                          <span className="font-medium">{p.name}</span>
+                          <span className="text-gray-400 ml-2">NT$ {p.price.toLocaleString()}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {freeItems.length > 0 && (
+                  <div className="border rounded-lg divide-y">
+                    {freeItems.map(item => (
+                      <div key={item.product_id} className="flex items-center gap-2 px-3 py-2">
+                        <span className="flex-1 text-sm font-medium">{item.product_name}</span>
+                        <Input
+                          type="number" min={1} className="w-20 h-7 text-sm text-center"
+                          value={item.unit_price}
+                          onChange={e => setFreeItems(prev => prev.map(i => i.product_id === item.product_id ? { ...i, unit_price: parseFloat(e.target.value) || 0 } : i))}
+                        />
+                        <span className="text-xs text-gray-400">×</span>
+                        <div className="flex items-center gap-1">
+                          <button type="button" className="w-6 h-6 rounded-full border flex items-center justify-center text-sm hover:bg-gray-100 disabled:opacity-30"
+                            disabled={item.quantity <= 1}
+                            onClick={() => setFreeItems(prev => prev.map(i => i.product_id === item.product_id ? { ...i, quantity: i.quantity - 1 } : i))}>
+                            −
+                          </button>
+                          <span className="w-6 text-center text-sm">{item.quantity}</span>
+                          <button type="button" className="w-6 h-6 rounded-full border flex items-center justify-center text-sm hover:bg-gray-100"
+                            onClick={() => setFreeItems(prev => prev.map(i => i.product_id === item.product_id ? { ...i, quantity: i.quantity + 1 } : i))}>
+                            +
+                          </button>
+                        </div>
+                        <button type="button" onClick={() => setFreeItems(prev => prev.filter(i => i.product_id !== item.product_id))}>
+                          <Trash2 className="h-4 w-4 text-red-400" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* 包材搜尋 */}
+              <div className="space-y-2">
+                <p className="text-sm font-semibold text-gray-500">包材</p>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Input
+                    className="pl-9"
+                    placeholder="搜尋包材名稱..."
+                    value={freeMaterialSearch}
+                    onChange={e => {
+                      setFreeMaterialSearch(e.target.value)
+                      setFreeMaterialSearchOpen(true)
+                      searchFreeMaterials(e.target.value)
+                    }}
+                    onFocus={() => freeMaterialSearch && setFreeMaterialSearchOpen(true)}
+                  />
+                  {freeMaterialSearchOpen && freeMaterialResults.length > 0 && (
+                    <div className="absolute z-50 top-full mt-1 w-full bg-white border rounded-lg shadow-md max-h-48 overflow-y-auto">
+                      {freeMaterialResults.map(m => (
+                        <button key={m.id} type="button"
+                          className="w-full text-left px-3 py-2 hover:bg-gray-50 text-sm border-b last:border-0"
+                          onClick={() => addFreeMaterial(m)}>
+                          <span className="font-medium">{m.name}</span>
+                          <span className="text-gray-400 ml-2 text-xs">{m.unit}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {freeMaterials.length > 0 && (
+                  <div className="border rounded-lg divide-y">
+                    {freeMaterials.map(mat => (
+                      <div key={mat.material_id} className="flex items-center gap-2 px-3 py-2">
+                        <span className="flex-1 text-sm font-medium">{mat.material_name}</span>
+                        <span className="text-xs text-gray-400">{mat.unit}</span>
+                        <div className="flex items-center gap-1">
+                          <button type="button" className="w-6 h-6 rounded-full border flex items-center justify-center text-sm hover:bg-gray-100 disabled:opacity-30"
+                            disabled={mat.quantity <= 1}
+                            onClick={() => setFreeMaterials(prev => prev.map(m => m.material_id === mat.material_id ? { ...m, quantity: m.quantity - 1 } : m))}>
+                            −
+                          </button>
+                          <span className="w-6 text-center text-sm">{mat.quantity}</span>
+                          <button type="button" className="w-6 h-6 rounded-full border flex items-center justify-center text-sm hover:bg-gray-100"
+                            onClick={() => setFreeMaterials(prev => prev.map(m => m.material_id === mat.material_id ? { ...m, quantity: m.quantity + 1 } : m))}>
+                            +
+                          </button>
+                        </div>
+                        <Input
+                          className="w-24 h-7 text-xs"
+                          placeholder="備註"
+                          value={mat.notes}
+                          onChange={e => setFreeMaterials(prev => prev.map(m => m.material_id === mat.material_id ? { ...m, notes: e.target.value } : m))}
+                        />
+                        <button type="button" onClick={() => setFreeMaterials(prev => prev.filter(m => m.material_id !== mat.material_id))}>
+                          <Trash2 className="h-4 w-4 text-red-400" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* 物流方式 */}
+              <div className="space-y-2">
+                <Label>物流方式</Label>
+                <div className="space-y-1.5">
+                  {allDeliveryMethods.map(dm => (
+                    <label key={dm.id}
+                      className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors
+                        ${freeDeliveryId === dm.id ? 'border-blue-500 bg-blue-50' : 'hover:bg-gray-50'}`}>
+                      <div className="flex items-center gap-2">
+                        <input type="radio" name="freeDelivery" value={dm.id}
+                          checked={freeDeliveryId === dm.id}
+                          onChange={() => {
+                            setFreeDeliveryId(dm.id)
+                            setFreeDeliveryFee(String(dm.default_fee))
+                          }} />
+                        <span className="text-sm">{dm.name}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {freeDeliveryId === dm.id ? (
+                          <div className="flex items-center gap-1">
+                            <span className="text-xs text-gray-400">NT$</span>
+                            <Input
+                              type="number" min={0} className="w-20 h-7 text-sm text-right"
+                              value={freeDeliveryFee}
+                              onChange={e => setFreeDeliveryFee(e.target.value)}
+                              onClick={e => e.stopPropagation()}
+                            />
+                          </div>
+                        ) : (
+                          <span className="text-sm text-gray-500">{dm.default_fee === 0 ? '免運' : `NT$ ${dm.default_fee}`}</span>
+                        )}
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* 金額小計 */}
+              <div className="bg-gray-50 rounded-lg px-4 py-3 space-y-1 text-sm">
+                {(() => {
+                  const subtotal = freeItems.reduce((s, i) => s + i.quantity * i.unit_price, 0)
+                  const fee = parseFloat(freeDeliveryFee) || 0
+                  return (<>
+                    <div className="flex justify-between text-gray-500">
+                      <span>商品小計</span><span>NT$ {subtotal.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between text-gray-500">
+                      <span>運費</span><span>{fee === 0 ? '免運' : `NT$ ${fee}`}</span>
+                    </div>
+                    <div className="flex justify-between font-bold pt-1 border-t">
+                      <span>合計</span><span>NT$ {(subtotal + fee).toLocaleString()}</span>
+                    </div>
+                  </>)
                 })()}
               </div>
-            )}
+            </>)}
+
+            {/* 備註（共用） */}
+            <div className="space-y-1.5">
+              <Label>備註</Label>
+              <Textarea placeholder="選填" rows={2} value={createCustomer.notes}
+                onChange={e => setCreateCustomer({ ...createCustomer, notes: e.target.value })} />
+            </div>
           </div>
 
           <div className="flex gap-3 pt-2">
             <Button variant="outline" className="flex-1" onClick={() => setCreateDialogOpen(false)}>取消</Button>
-            <Button className="flex-1" disabled={createSaving || !createCustomer.name.trim() || !createCustomer.phone.trim() || !createDeliveryId || !createActivityId}
-              onClick={handleCreateOrder}>
-              {createSaving ? '建立中...' : '建立訂單'}
-            </Button>
+            {createMode === 'activity' ? (
+              <Button className="flex-1"
+                disabled={createSaving || !createCustomer.name.trim() || !createCustomer.phone.trim() || !createDeliveryId || !createActivityId}
+                onClick={handleCreateOrder}>
+                {createSaving ? '建立中...' : '建立訂單'}
+              </Button>
+            ) : (
+              <Button className="flex-1"
+                disabled={createSaving || !createCustomer.name.trim() || !createCustomer.phone.trim()}
+                onClick={handleCreateFreeOrder}>
+                {createSaving ? '建立中...' : '建立訂單'}
+              </Button>
+            )}
           </div>
         </DialogContent>
       </Dialog>
