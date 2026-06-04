@@ -58,11 +58,20 @@ type Order = {
   delivery_methods?: { name: string } | null
   order_items?: {
     id: string
+    product_id: string | null
     product_name: string
     quantity: number
     unit_price: number
     subtotal: number
   }[]
+}
+
+type ItemForm = {
+  id: string | null
+  product_id: string | null
+  product_name: string
+  quantity: number
+  unit_price: number
 }
 
 type OrderMaterial = {
@@ -122,6 +131,14 @@ export default function OrdersPage() {
   const [editingOrder, setEditingOrder] = useState(false)
   const [editForm, setEditForm] = useState({ name: '', phone: '', address: '' })
 
+  // 編輯商品
+  const [editingItems, setEditingItems] = useState(false)
+  const [itemForms, setItemForms] = useState<ItemForm[]>([])
+  const [itemsSaving, setItemsSaving] = useState(false)
+  const [addItemSearch, setAddItemSearch] = useState('')
+  const [addItemResults, setAddItemResults] = useState<Product[]>([])
+  const [addItemOpen, setAddItemOpen] = useState(false)
+
   // 包材
   const [orderMaterials, setOrderMaterials] = useState<OrderMaterial[]>([])
   const [allMaterials, setAllMaterials] = useState<Material[]>([])
@@ -177,7 +194,7 @@ export default function OrdersPage() {
         *,
         activities(name),
         delivery_methods(name),
-        order_items(id, product_name, quantity, unit_price, subtotal)
+        order_items(id, product_id, product_name, quantity, unit_price, subtotal)
       `)
       .order('created_at', { ascending: false })
 
@@ -217,9 +234,99 @@ export default function OrdersPage() {
   const openOrder = (order: Order) => {
     setSelectedOrder(order)
     setEditingOrder(false)
+    setEditingItems(false)
     setAddingMaterial(false)
     setMaterialForm({ material_id: '', quantity: '1', notes: '' })
     fetchOrderMaterials(order.id)
+  }
+
+  const startEditItems = () => {
+    if (!selectedOrder) return
+    setItemForms(
+      (selectedOrder.order_items ?? []).map(i => ({
+        id: i.id,
+        product_id: i.product_id ?? null,
+        product_name: i.product_name,
+        quantity: i.quantity,
+        unit_price: i.unit_price,
+      }))
+    )
+    setAddItemSearch('')
+    setAddItemResults([])
+    setAddItemOpen(false)
+    setEditingItems(true)
+  }
+
+  const searchAddItems = async (q: string) => {
+    if (!q.trim()) { setAddItemResults([]); return }
+    const { data } = await supabase.from('products').select('id, name, price').ilike('name', `%${q}%`).eq('is_active', true).limit(8)
+    if (data) setAddItemResults(data)
+  }
+
+  const addItemToForms = (p: Product) => {
+    setItemForms(prev => {
+      const existing = prev.find(i => i.product_id === p.id)
+      if (existing) return prev.map(i => i.product_id === p.id ? { ...i, quantity: i.quantity + 1 } : i)
+      return [...prev, { id: null, product_id: p.id, product_name: p.name, quantity: 1, unit_price: p.price }]
+    })
+    setAddItemSearch('')
+    setAddItemResults([])
+    setAddItemOpen(false)
+  }
+
+  const saveItems = async () => {
+    if (!selectedOrder) return
+    setItemsSaving(true)
+
+    const originalIds = new Set((selectedOrder.order_items ?? []).map(i => i.id))
+    const currentIds = new Set(itemForms.filter(i => i.id).map(i => i.id!))
+    const toDelete = [...originalIds].filter(id => !currentIds.has(id))
+
+    await Promise.all([
+      toDelete.length > 0
+        ? supabase.from('order_items').delete().in('id', toDelete)
+        : Promise.resolve(),
+      ...itemForms.filter(i => i.id).map(i =>
+        supabase.from('order_items').update({
+          quantity: i.quantity,
+          unit_price: i.unit_price,
+          subtotal: i.quantity * i.unit_price,
+        }).eq('id', i.id!)
+      ),
+    ])
+
+    const newItems = itemForms.filter(i => !i.id)
+    if (newItems.length > 0) {
+      await supabase.from('order_items').insert(newItems.map(i => ({
+        order_id: selectedOrder.id,
+        product_id: i.product_id,
+        product_name: i.product_name,
+        quantity: i.quantity,
+        unit_price: i.unit_price,
+        subtotal: i.quantity * i.unit_price,
+      })))
+    }
+
+    const subtotal = itemForms.reduce((s, i) => s + i.quantity * i.unit_price, 0)
+    const total = subtotal + selectedOrder.delivery_fee
+    await supabase.from('orders').update({ subtotal, total }).eq('id', selectedOrder.id)
+
+    setSelectedOrder({
+      ...selectedOrder,
+      subtotal,
+      total,
+      order_items: itemForms.map(i => ({
+        id: i.id ?? '',
+        product_id: i.product_id,
+        product_name: i.product_name,
+        quantity: i.quantity,
+        unit_price: i.unit_price,
+        subtotal: i.quantity * i.unit_price,
+      })),
+    })
+    setItemsSaving(false)
+    setEditingItems(false)
+    fetchOrders()
   }
 
   const startEditOrder = () => {
@@ -596,6 +703,7 @@ export default function OrdersPage() {
               <TableHead>活動</TableHead>
               <TableHead>訂單狀態</TableHead>
               <TableHead>付款狀態</TableHead>
+              <TableHead>運費</TableHead>
               <TableHead>總金額</TableHead>
               <TableHead>建立時間</TableHead>
             </TableRow>
@@ -607,11 +715,11 @@ export default function OrdersPage() {
                 : orders
               return loading ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-10 text-gray-400">載入中...</TableCell>
+                  <TableCell colSpan={7} className="text-center py-10 text-gray-400">載入中...</TableCell>
                 </TableRow>
               ) : filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-10 text-gray-400">沒有符合的訂單</TableCell>
+                  <TableCell colSpan={7} className="text-center py-10 text-gray-400">沒有符合的訂單</TableCell>
                 </TableRow>
               ) : filtered.map(order => (
                 <TableRow
@@ -630,6 +738,9 @@ export default function OrdersPage() {
                     <Badge variant={getPaymentStatusStyle(order.payment_status).variant as any}>
                       {getPaymentStatusStyle(order.payment_status).label}
                     </Badge>
+                  </TableCell>
+                  <TableCell className="text-gray-500">
+                    {order.delivery_fee > 0 ? `NT$ ${order.delivery_fee.toLocaleString()}` : '免運'}
                   </TableCell>
                   <TableCell>NT$ {order.total.toLocaleString()}</TableCell>
                   <TableCell className="text-gray-400">
@@ -700,26 +811,123 @@ export default function OrdersPage() {
 
               {/* 訂購商品 */}
               <div>
-                <p className="text-sm font-semibold text-gray-500 mb-2">訂購商品</p>
-                {selectedOrder.order_items?.length ? (
-                  <div className="space-y-1">
-                    {selectedOrder.order_items.map(item => (
-                      <div key={item.id} className="flex justify-between text-sm">
-                        <span>{item.product_name} x{item.quantity}</span>
-                        <span>NT$ {item.subtotal.toLocaleString()}</span>
-                      </div>
-                    ))}
-                    <div className="flex justify-between text-sm pt-2 border-t font-medium">
-                      <span>運費</span>
-                      <span>NT$ {selectedOrder.delivery_fee.toLocaleString()}</span>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-sm font-semibold text-gray-500">訂購商品</p>
+                  {!editingItems ? (
+                    <Button variant="ghost" size="sm" className="h-7 px-2" onClick={startEditItems}>
+                      <Pencil className="h-3.5 w-3.5 mr-1" />編輯
+                    </Button>
+                  ) : (
+                    <div className="flex gap-1">
+                      <Button size="sm" className="h-7 px-3" disabled={itemsSaving} onClick={saveItems}>
+                        {itemsSaving ? '儲存中...' : '儲存'}
+                      </Button>
+                      <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => setEditingItems(false)}>
+                        <X className="h-3.5 w-3.5" />
+                      </Button>
                     </div>
-                    <div className="flex justify-between text-sm font-bold">
-                      <span>合計</span>
-                      <span>NT$ {selectedOrder.total.toLocaleString()}</span>
+                  )}
+                </div>
+
+                {editingItems ? (
+                  <div className="space-y-2">
+                    {itemForms.length > 0 && (
+                      <div className="border rounded-lg divide-y">
+                        {itemForms.map((item, idx) => (
+                          <div key={idx} className="flex items-center gap-2 px-3 py-2">
+                            <span className="flex-1 text-sm truncate">{item.product_name}</span>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <span className="text-xs text-gray-400">NT$</span>
+                              <Input
+                                type="number" min={0} className="w-20 h-7 text-sm text-right"
+                                value={item.unit_price}
+                                onChange={e => setItemForms(prev => prev.map((i, j) => j === idx ? { ...i, unit_price: parseFloat(e.target.value) || 0 } : i))}
+                              />
+                              <span className="text-xs text-gray-400">×</span>
+                              <button type="button" className="w-6 h-6 rounded-full border flex items-center justify-center text-sm hover:bg-gray-100 disabled:opacity-30"
+                                disabled={item.quantity <= 1}
+                                onClick={() => setItemForms(prev => prev.map((i, j) => j === idx ? { ...i, quantity: i.quantity - 1 } : i))}>−</button>
+                              <span className="w-5 text-center text-sm">{item.quantity}</span>
+                              <button type="button" className="w-6 h-6 rounded-full border flex items-center justify-center text-sm hover:bg-gray-100"
+                                onClick={() => setItemForms(prev => prev.map((i, j) => j === idx ? { ...i, quantity: i.quantity + 1 } : i))}>+</button>
+                            </div>
+                            <button type="button" onClick={() => setItemForms(prev => prev.filter((_, j) => j !== idx))}>
+                              <Trash2 className="h-4 w-4 text-red-400" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* 新增商品 */}
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                      <Input
+                        className="pl-9"
+                        placeholder="搜尋商品新增..."
+                        value={addItemSearch}
+                        onChange={e => {
+                          setAddItemSearch(e.target.value)
+                          setAddItemOpen(true)
+                          searchAddItems(e.target.value)
+                        }}
+                        onBlur={() => setTimeout(() => setAddItemOpen(false), 150)}
+                      />
+                      {addItemOpen && addItemResults.length > 0 && (
+                        <div className="absolute z-50 top-full mt-1 w-full bg-white border rounded-lg shadow-md max-h-40 overflow-y-auto">
+                          {addItemResults.map(p => (
+                            <button key={p.id} type="button"
+                              className="w-full text-left px-3 py-2 hover:bg-gray-50 text-sm border-b last:border-0"
+                              onMouseDown={e => e.preventDefault()}
+                              onClick={() => addItemToForms(p)}>
+                              <span className="font-medium">{p.name}</span>
+                              <span className="text-gray-400 ml-2">NT$ {p.price.toLocaleString()}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 金額預覽 */}
+                    <div className="bg-gray-50 rounded-lg px-3 py-2 text-sm space-y-1">
+                      {(() => {
+                        const sub = itemForms.reduce((s, i) => s + i.quantity * i.unit_price, 0)
+                        const fee = selectedOrder.delivery_fee
+                        return (<>
+                          <div className="flex justify-between text-gray-500">
+                            <span>商品小計</span><span>NT$ {sub.toLocaleString()}</span>
+                          </div>
+                          <div className="flex justify-between text-gray-500">
+                            <span>運費</span><span>{fee > 0 ? `NT$ ${fee.toLocaleString()}` : '免運'}</span>
+                          </div>
+                          <div className="flex justify-between font-semibold border-t pt-1">
+                            <span>合計</span><span>NT$ {(sub + fee).toLocaleString()}</span>
+                          </div>
+                        </>)
+                      })()}
                     </div>
                   </div>
                 ) : (
-                  <p className="text-sm text-gray-400">無商品資訊</p>
+                  selectedOrder.order_items?.length ? (
+                    <div className="space-y-1">
+                      {selectedOrder.order_items.map(item => (
+                        <div key={item.id} className="flex justify-between text-sm">
+                          <span>{item.product_name} x{item.quantity}</span>
+                          <span>NT$ {item.subtotal.toLocaleString()}</span>
+                        </div>
+                      ))}
+                      <div className="flex justify-between text-sm pt-2 border-t font-medium">
+                        <span>運費</span>
+                        <span>{selectedOrder.delivery_fee > 0 ? `NT$ ${selectedOrder.delivery_fee.toLocaleString()}` : '免運'}</span>
+                      </div>
+                      <div className="flex justify-between text-sm font-bold">
+                        <span>合計</span>
+                        <span>NT$ {selectedOrder.total.toLocaleString()}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-400">無商品資訊</p>
+                  )
                 )}
               </div>
 
