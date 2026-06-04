@@ -28,7 +28,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
-import { Plus, Trash2, Search, ChevronDown } from 'lucide-react'
+import { Plus, Trash2, Search, ChevronDown, Pencil, X } from 'lucide-react'
 
 type Member = {
   id: string
@@ -117,6 +117,8 @@ export default function OrdersPage() {
   const [loading, setLoading] = useState(true)
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
   const [saving, setSaving] = useState(false)
+  const [editingOrder, setEditingOrder] = useState(false)
+  const [editForm, setEditForm] = useState({ name: '', phone: '', address: '' })
 
   // 包材
   const [orderMaterials, setOrderMaterials] = useState<OrderMaterial[]>([])
@@ -208,9 +210,40 @@ export default function OrdersPage() {
 
   const openOrder = (order: Order) => {
     setSelectedOrder(order)
+    setEditingOrder(false)
     setAddingMaterial(false)
     setMaterialForm({ material_id: '', quantity: '1', notes: '' })
     fetchOrderMaterials(order.id)
+  }
+
+  const startEditOrder = () => {
+    if (!selectedOrder) return
+    setEditForm({
+      name: selectedOrder.customer_name,
+      phone: selectedOrder.customer_phone ?? '',
+      address: selectedOrder.customer_address ?? '',
+    })
+    setEditingOrder(true)
+  }
+
+  const saveEditOrder = async () => {
+    if (!selectedOrder) return
+    setSaving(true)
+    const { error } = await supabase.from('orders').update({
+      customer_name: editForm.name.trim(),
+      customer_phone: editForm.phone.trim() || null,
+      customer_address: editForm.address.trim() || null,
+    }).eq('id', selectedOrder.id)
+    setSaving(false)
+    if (error) { alert('儲存失敗：' + error.message); return }
+    setSelectedOrder({
+      ...selectedOrder,
+      customer_name: editForm.name.trim(),
+      customer_phone: editForm.phone.trim() || null,
+      customer_address: editForm.address.trim() || null,
+    })
+    setEditingOrder(false)
+    fetchOrders()
   }
 
   const addOrderMaterial = async () => {
@@ -569,13 +602,49 @@ export default function OrdersPage() {
             <div className="space-y-5">
               {/* 客戶資訊 */}
               <div>
-                <p className="text-sm font-semibold text-gray-500 mb-2">客戶資訊</p>
-                <div className="space-y-1 text-sm">
-                  <p><span className="text-gray-400">姓名：</span>{selectedOrder.customer_name}</p>
-                  <p><span className="text-gray-400">電話：</span>{selectedOrder.customer_phone ?? '—'}</p>
-                  <p><span className="text-gray-400">地址：</span>{selectedOrder.customer_address ?? '—'}</p>
-                  <p><span className="text-gray-400">物流：</span>{selectedOrder.delivery_methods?.name ?? '—'}</p>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-sm font-semibold text-gray-500">客戶資訊</p>
+                  {!editingOrder ? (
+                    <Button variant="ghost" size="sm" className="h-7 px-2" onClick={startEditOrder}>
+                      <Pencil className="h-3.5 w-3.5 mr-1" />編輯
+                    </Button>
+                  ) : (
+                    <div className="flex gap-1">
+                      <Button size="sm" className="h-7 px-3" disabled={saving} onClick={saveEditOrder}>
+                        {saving ? '儲存中...' : '儲存'}
+                      </Button>
+                      <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => setEditingOrder(false)}>
+                        <X className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  )}
                 </div>
+                {editingOrder ? (
+                  <div className="space-y-2">
+                    <div className="space-y-1">
+                      <Label className="text-xs text-gray-500">姓名</Label>
+                      <Input className="h-8 text-sm" value={editForm.name}
+                        onChange={e => setEditForm({ ...editForm, name: e.target.value })} />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-gray-500">電話</Label>
+                      <Input className="h-8 text-sm" value={editForm.phone}
+                        onChange={e => setEditForm({ ...editForm, phone: e.target.value })} />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-gray-500">地址</Label>
+                      <Input className="h-8 text-sm" value={editForm.address}
+                        onChange={e => setEditForm({ ...editForm, address: e.target.value })} />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-1 text-sm">
+                    <p><span className="text-gray-400">姓名：</span>{selectedOrder.customer_name}</p>
+                    <p><span className="text-gray-400">電話：</span>{selectedOrder.customer_phone ?? '—'}</p>
+                    <p><span className="text-gray-400">地址：</span>{selectedOrder.customer_address ?? '—'}</p>
+                    <p><span className="text-gray-400">物流：</span>{selectedOrder.delivery_methods?.name ?? '—'}</p>
+                  </div>
+                )}
               </div>
 
               {/* 訂購商品 */}
