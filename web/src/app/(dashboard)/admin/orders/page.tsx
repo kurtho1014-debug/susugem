@@ -56,6 +56,8 @@ type Order = {
   created_at: string
   activities?: { name: string } | null
   delivery_methods?: { name: string } | null
+  shipped_at: string | null
+  paid_at: string | null
   order_items?: {
     id: string
     product_id: string | null
@@ -63,6 +65,7 @@ type Order = {
     quantity: number
     unit_price: number
     subtotal: number
+    wrist_size: string | null
   }[]
 }
 
@@ -72,6 +75,7 @@ type ItemForm = {
   product_name: string
   quantity: number
   unit_price: number
+  wrist_size: string
 }
 
 type OrderMaterial = {
@@ -87,7 +91,7 @@ type Material = { id: string; name: string; unit: string }
 type Product = { id: string; name: string; price: number }
 type DeliveryMethod = { id: string; name: string; default_fee: number }
 
-type FreeItem = { product_id: string; product_name: string; quantity: number; unit_price: number }
+type FreeItem = { product_id: string; product_name: string; quantity: number; unit_price: number; wrist_size: string }
 type FreeMaterial = { material_id: string; material_name: string; unit: string; quantity: number; notes: string }
 
 type CreateActivityProduct = {
@@ -101,11 +105,19 @@ type CreateDeliveryMethod = {
 }
 
 const orderStatusOptions = [
-  { value: 'pending',    label: '待處理', variant: 'outline' },
-  { value: 'confirmed',  label: '已確認', variant: 'secondary' },
-  { value: 'processing', label: '製作中', variant: 'default' },
-  { value: 'completed',  label: '已完成', variant: 'default' },
-  { value: 'cancelled',  label: '已取消', variant: 'destructive' },
+  { value: 'consulting', label: '溝通中',  variant: 'outline' },
+  { value: 'pending',    label: '待處理',  variant: 'outline' },
+  { value: 'confirmed',  label: '已確認',  variant: 'secondary' },
+  { value: 'processing', label: '製作中',  variant: 'default' },
+  { value: 'completed',  label: '已完成',  variant: 'default' },
+  { value: 'cancelled',  label: '已取消',  variant: 'destructive' },
+] as const
+
+const paymentMethodOptions = [
+  { value: 'transfer',  label: '銀行轉帳' },
+  { value: 'line_pay',  label: 'LINE Pay' },
+  { value: 'cod',       label: '貨到付款' },
+  { value: 'shopee',    label: '蝦皮' },
 ] as const
 
 const paymentStatusOptions = [
@@ -194,7 +206,7 @@ export default function OrdersPage() {
         *,
         activities(name),
         delivery_methods(name),
-        order_items(id, product_id, product_name, quantity, unit_price, subtotal)
+        order_items(id, product_id, product_name, quantity, unit_price, subtotal, wrist_size)
       `)
       .order('created_at', { ascending: false })
 
@@ -249,6 +261,7 @@ export default function OrdersPage() {
         product_name: i.product_name,
         quantity: i.quantity,
         unit_price: i.unit_price,
+        wrist_size: i.wrist_size ?? '',
       }))
     )
     setAddItemSearch('')
@@ -267,7 +280,7 @@ export default function OrdersPage() {
     setItemForms(prev => {
       const existing = prev.find(i => i.product_id === p.id)
       if (existing) return prev.map(i => i.product_id === p.id ? { ...i, quantity: i.quantity + 1 } : i)
-      return [...prev, { id: null, product_id: p.id, product_name: p.name, quantity: 1, unit_price: p.price }]
+      return [...prev, { id: null, product_id: p.id, product_name: p.name, quantity: 1, unit_price: p.price, wrist_size: '' }]
     })
     setAddItemSearch('')
     setAddItemResults([])
@@ -291,6 +304,7 @@ export default function OrdersPage() {
           quantity: i.quantity,
           unit_price: i.unit_price,
           subtotal: i.quantity * i.unit_price,
+          wrist_size: i.wrist_size || null,
         }).eq('id', i.id!)
       ),
     ])
@@ -304,6 +318,7 @@ export default function OrdersPage() {
         quantity: i.quantity,
         unit_price: i.unit_price,
         subtotal: i.quantity * i.unit_price,
+        wrist_size: i.wrist_size || null,
       })))
     }
 
@@ -322,6 +337,7 @@ export default function OrdersPage() {
         quantity: i.quantity,
         unit_price: i.unit_price,
         subtotal: i.quantity * i.unit_price,
+        wrist_size: i.wrist_size || null,
       })),
     })
     setItemsSaving(false)
@@ -415,7 +431,7 @@ export default function OrdersPage() {
     setFreeItems(prev => {
       const existing = prev.find(i => i.product_id === p.id)
       if (existing) return prev.map(i => i.product_id === p.id ? { ...i, quantity: i.quantity + 1 } : i)
-      return [...prev, { product_id: p.id, product_name: p.name, quantity: 1, unit_price: p.price }]
+      return [...prev, { product_id: p.id, product_name: p.name, quantity: 1, unit_price: p.price, wrist_size: '' }]
     })
     setFreeProductSearch('')
     setFreeProductResults([])
@@ -576,6 +592,7 @@ export default function OrdersPage() {
         quantity: i.quantity,
         unit_price: i.unit_price,
         subtotal: i.quantity * i.unit_price,
+        wrist_size: i.wrist_size || null,
       })))
     }
     if (freeMaterials.length > 0) {
@@ -600,17 +617,21 @@ export default function OrdersPage() {
     fetchOrders()
   }
 
-  // 更新訂單
+  // 更新訂單（付款狀態改為 paid 時自動填今日為付款日期）
   const updateOrder = async (field: Partial<Order>) => {
     if (!selectedOrder) return
     setSaving(true)
+    const payload = { ...field }
+    if (field.payment_status === 'paid' && !selectedOrder.paid_at) {
+      payload.paid_at = new Date().toISOString().slice(0, 10)
+    }
     const { error } = await supabase
       .from('orders')
-      .update(field)
+      .update(payload)
       .eq('id', selectedOrder.id)
 
     if (!error) {
-      setSelectedOrder({ ...selectedOrder, ...field })
+      setSelectedOrder({ ...selectedOrder, ...payload })
       fetchOrders()
     }
     setSaving(false)
@@ -834,26 +855,34 @@ export default function OrdersPage() {
                     {itemForms.length > 0 && (
                       <div className="border rounded-lg divide-y">
                         {itemForms.map((item, idx) => (
-                          <div key={idx} className="flex items-center gap-2 px-3 py-2">
-                            <span className="flex-1 text-sm truncate">{item.product_name}</span>
-                            <div className="flex items-center gap-1 shrink-0">
-                              <span className="text-xs text-gray-400">NT$</span>
-                              <Input
-                                type="number" min={0} className="w-20 h-7 text-sm text-right"
-                                value={item.unit_price}
-                                onChange={e => setItemForms(prev => prev.map((i, j) => j === idx ? { ...i, unit_price: parseFloat(e.target.value) || 0 } : i))}
-                              />
-                              <span className="text-xs text-gray-400">×</span>
-                              <button type="button" className="w-6 h-6 rounded-full border flex items-center justify-center text-sm hover:bg-gray-100 disabled:opacity-30"
-                                disabled={item.quantity <= 1}
-                                onClick={() => setItemForms(prev => prev.map((i, j) => j === idx ? { ...i, quantity: i.quantity - 1 } : i))}>−</button>
-                              <span className="w-5 text-center text-sm">{item.quantity}</span>
-                              <button type="button" className="w-6 h-6 rounded-full border flex items-center justify-center text-sm hover:bg-gray-100"
-                                onClick={() => setItemForms(prev => prev.map((i, j) => j === idx ? { ...i, quantity: i.quantity + 1 } : i))}>+</button>
+                          <div key={idx} className="px-3 py-2 space-y-1.5">
+                            <div className="flex items-center gap-2">
+                              <span className="flex-1 text-sm font-medium truncate">{item.product_name}</span>
+                              <div className="flex items-center gap-1 shrink-0">
+                                <span className="text-xs text-gray-400">NT$</span>
+                                <Input
+                                  type="number" min={0} className="w-20 h-7 text-sm text-right"
+                                  value={item.unit_price}
+                                  onChange={e => setItemForms(prev => prev.map((i, j) => j === idx ? { ...i, unit_price: parseFloat(e.target.value) || 0 } : i))}
+                                />
+                                <span className="text-xs text-gray-400">×</span>
+                                <button type="button" className="w-6 h-6 rounded-full border flex items-center justify-center text-sm hover:bg-gray-100 disabled:opacity-30"
+                                  disabled={item.quantity <= 1}
+                                  onClick={() => setItemForms(prev => prev.map((i, j) => j === idx ? { ...i, quantity: i.quantity - 1 } : i))}>−</button>
+                                <span className="w-5 text-center text-sm">{item.quantity}</span>
+                                <button type="button" className="w-6 h-6 rounded-full border flex items-center justify-center text-sm hover:bg-gray-100"
+                                  onClick={() => setItemForms(prev => prev.map((i, j) => j === idx ? { ...i, quantity: i.quantity + 1 } : i))}>+</button>
+                              </div>
+                              <button type="button" onClick={() => setItemForms(prev => prev.filter((_, j) => j !== idx))}>
+                                <Trash2 className="h-4 w-4 text-red-400" />
+                              </button>
                             </div>
-                            <button type="button" onClick={() => setItemForms(prev => prev.filter((_, j) => j !== idx))}>
-                              <Trash2 className="h-4 w-4 text-red-400" />
-                            </button>
+                            <Input
+                              className="h-7 text-xs"
+                              placeholder="手圍尺寸（例：16cm）"
+                              value={item.wrist_size}
+                              onChange={e => setItemForms(prev => prev.map((i, j) => j === idx ? { ...i, wrist_size: e.target.value } : i))}
+                            />
                           </div>
                         ))}
                       </div>
@@ -912,7 +941,10 @@ export default function OrdersPage() {
                     <div className="space-y-1">
                       {selectedOrder.order_items.map(item => (
                         <div key={item.id} className="flex justify-between text-sm">
-                          <span>{item.product_name} x{item.quantity}</span>
+                          <span>
+                            {item.product_name} x{item.quantity}
+                            {item.wrist_size && <span className="text-gray-400 ml-1 text-xs">（{item.wrist_size}）</span>}
+                          </span>
                           <span>NT$ {item.subtotal.toLocaleString()}</span>
                         </div>
                       ))}
@@ -969,7 +1001,47 @@ export default function OrdersPage() {
                 </Select>
               </div>
 
-              {/* 物流單號 */}
+              {/* 付款方式 + 付款日期 */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>付款方式</Label>
+                  <Select
+                    value={selectedOrder.payment_method ?? ''}
+                    onValueChange={v => updateOrder({ payment_method: v || null })}
+                    disabled={saving}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="選擇付款方式" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">未設定</SelectItem>
+                      {paymentMethodOptions.map(o => (
+                        <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>付款日期</Label>
+                  <div className="flex gap-1">
+                    <Input
+                      type="date"
+                      className="flex-1"
+                      value={selectedOrder.paid_at ?? ''}
+                      onChange={e => updateOrder({ paid_at: e.target.value || null })}
+                      disabled={saving}
+                    />
+                    {selectedOrder.paid_at && (
+                      <Button variant="ghost" size="sm" className="px-2 shrink-0" disabled={saving}
+                        onClick={() => updateOrder({ paid_at: null })}>
+                        <X className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* 物流單號 + 出貨日期 */}
               <div className="space-y-2">
                 <Label>物流單號</Label>
                 <div className="flex gap-2">
@@ -988,6 +1060,24 @@ export default function OrdersPage() {
                   >
                     儲存
                   </Button>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>出貨日期</Label>
+                <div className="flex gap-1">
+                  <Input
+                    type="date"
+                    className="flex-1"
+                    value={selectedOrder.shipped_at ?? ''}
+                    onChange={e => updateOrder({ shipped_at: e.target.value || null })}
+                    disabled={saving}
+                  />
+                  {selectedOrder.shipped_at && (
+                    <Button variant="ghost" size="sm" className="px-2 shrink-0" disabled={saving}
+                      onClick={() => updateOrder({ shipped_at: null })}>
+                      <X className="h-4 w-4" />
+                    </Button>
+                  )}
                 </div>
               </div>
 
@@ -1399,29 +1489,37 @@ export default function OrdersPage() {
                 {freeItems.length > 0 && (
                   <div className="border rounded-lg divide-y">
                     {freeItems.map(item => (
-                      <div key={item.product_id} className="flex items-center gap-2 px-3 py-2">
-                        <span className="flex-1 text-sm font-medium">{item.product_name}</span>
-                        <Input
-                          type="number" min={1} className="w-20 h-7 text-sm text-center"
-                          value={item.unit_price}
-                          onChange={e => setFreeItems(prev => prev.map(i => i.product_id === item.product_id ? { ...i, unit_price: parseFloat(e.target.value) || 0 } : i))}
-                        />
-                        <span className="text-xs text-gray-400">×</span>
-                        <div className="flex items-center gap-1">
-                          <button type="button" className="w-6 h-6 rounded-full border flex items-center justify-center text-sm hover:bg-gray-100 disabled:opacity-30"
-                            disabled={item.quantity <= 1}
-                            onClick={() => setFreeItems(prev => prev.map(i => i.product_id === item.product_id ? { ...i, quantity: i.quantity - 1 } : i))}>
-                            −
-                          </button>
-                          <span className="w-6 text-center text-sm">{item.quantity}</span>
-                          <button type="button" className="w-6 h-6 rounded-full border flex items-center justify-center text-sm hover:bg-gray-100"
-                            onClick={() => setFreeItems(prev => prev.map(i => i.product_id === item.product_id ? { ...i, quantity: i.quantity + 1 } : i))}>
-                            +
+                      <div key={item.product_id} className="px-3 py-2 space-y-1.5">
+                        <div className="flex items-center gap-2">
+                          <span className="flex-1 text-sm font-medium">{item.product_name}</span>
+                          <Input
+                            type="number" min={1} className="w-20 h-7 text-sm text-center"
+                            value={item.unit_price}
+                            onChange={e => setFreeItems(prev => prev.map(i => i.product_id === item.product_id ? { ...i, unit_price: parseFloat(e.target.value) || 0 } : i))}
+                          />
+                          <span className="text-xs text-gray-400">×</span>
+                          <div className="flex items-center gap-1">
+                            <button type="button" className="w-6 h-6 rounded-full border flex items-center justify-center text-sm hover:bg-gray-100 disabled:opacity-30"
+                              disabled={item.quantity <= 1}
+                              onClick={() => setFreeItems(prev => prev.map(i => i.product_id === item.product_id ? { ...i, quantity: i.quantity - 1 } : i))}>
+                              −
+                            </button>
+                            <span className="w-6 text-center text-sm">{item.quantity}</span>
+                            <button type="button" className="w-6 h-6 rounded-full border flex items-center justify-center text-sm hover:bg-gray-100"
+                              onClick={() => setFreeItems(prev => prev.map(i => i.product_id === item.product_id ? { ...i, quantity: i.quantity + 1 } : i))}>
+                              +
+                            </button>
+                          </div>
+                          <button type="button" onClick={() => setFreeItems(prev => prev.filter(i => i.product_id !== item.product_id))}>
+                            <Trash2 className="h-4 w-4 text-red-400" />
                           </button>
                         </div>
-                        <button type="button" onClick={() => setFreeItems(prev => prev.filter(i => i.product_id !== item.product_id))}>
-                          <Trash2 className="h-4 w-4 text-red-400" />
-                        </button>
+                        <Input
+                          className="h-7 text-xs"
+                          placeholder="手圍尺寸（例：16cm）"
+                          value={item.wrist_size}
+                          onChange={e => setFreeItems(prev => prev.map(i => i.product_id === item.product_id ? { ...i, wrist_size: e.target.value } : i))}
+                        />
                       </div>
                     ))}
                   </div>
