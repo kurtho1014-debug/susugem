@@ -30,13 +30,14 @@ type Material = {
   category_id: string | null
   notes: string | null
   images: string[]
+  sort_order: number
   suppliers?: { name: string } | null
   material_categories?: { name: string } | null
 }
 
 const emptyForm = {
   name: '', unit: '個', unit_price: '', stock_quantity: '0',
-  supplier_id: '', category_id: '', notes: '', images: [] as string[],
+  supplier_id: '', category_id: '', notes: '', images: [] as string[], sort_order: '',
 }
 
 export default function MaterialsPage() {
@@ -70,6 +71,7 @@ export default function MaterialsPage() {
     const [{ data: mats }, { data: sups }, { data: cats }] = await Promise.all([
       supabase.from('materials')
         .select('*, suppliers(name), material_categories(name)')
+        .order('sort_order', { ascending: false })
         .order('created_at', { ascending: false }),
       supabase.from('suppliers').select('id, name').order('name'),
       supabase.from('material_categories').select('id, name').order('name'),
@@ -101,6 +103,7 @@ export default function MaterialsPage() {
       category_id: m.category_id ?? '',
       notes: m.notes ?? '',
       images: m.images ?? [],
+      sort_order: m.sort_order != null ? String(m.sort_order) : '',
     })
     setDialogOpen(true)
   }
@@ -117,6 +120,7 @@ export default function MaterialsPage() {
       category_id: form.category_id || null,
       notes: form.notes || null,
       images: form.images,
+      sort_order: form.sort_order !== '' ? parseInt(form.sort_order) || 0 : 0,
     }
     const { error } = editing
       ? await supabase.from('materials').update(payload).eq('id', editing.id)
@@ -336,6 +340,17 @@ export default function MaterialsPage() {
               <ImageUploader images={form.images}
                 onChange={imgs => setForm({ ...form, images: imgs })}
                 folder="materials" />
+            </div>
+            <div className="space-y-2">
+              <Label>排序</Label>
+              <Input
+                placeholder="數字越大排越前面"
+                value={form.sort_order}
+                onChange={e => {
+                  const v = e.target.value.replace(/[^0-9]/g, '')
+                  setForm({ ...form, sort_order: v })
+                }}
+              />
             </div>
           </div>
           <DialogFooter>
