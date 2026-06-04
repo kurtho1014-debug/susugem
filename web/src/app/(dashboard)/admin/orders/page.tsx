@@ -167,6 +167,7 @@ export default function OrdersPage() {
   const [createQuantities, setCreateQuantities] = useState<Record<string, number>>({})
   const [createDeliveryId, setCreateDeliveryId] = useState('')
   const [createCustomer, setCreateCustomer] = useState({ name: '', phone: '', email: '', address: '', notes: '' })
+  const [createPaymentMethod, setCreatePaymentMethod] = useState('')
   const [createExpense, setCreateExpense] = useState({ amount: '', note: '' })
   const [createSaving, setCreateSaving] = useState(false)
 
@@ -487,6 +488,7 @@ export default function OrdersPage() {
     setCreateQuantities({})
     setCreateDeliveryId('')
     setCreateCustomer({ name: '', phone: '', email: '', address: '', notes: '' })
+    setCreatePaymentMethod('')
     setCreateExpense({ amount: '', note: '' })
     setMemberResults([])
     setMemberActiveField(null)
@@ -536,6 +538,7 @@ export default function OrdersPage() {
       notes: createCustomer.notes.trim() || null,
       extra_expense: parseFloat(createExpense.amount) || null,
       extra_expense_note: createExpense.note.trim() || null,
+      payment_method: createPaymentMethod || null,
       order_status: 'pending',
       payment_status: 'unpaid',
     }).select().single()
@@ -577,6 +580,7 @@ export default function OrdersPage() {
       notes: createCustomer.notes.trim() || null,
       extra_expense: parseFloat(createExpense.amount) || null,
       extra_expense_note: createExpense.note.trim() || null,
+      payment_method: createPaymentMethod || null,
       order_status: 'pending',
       payment_status: 'unpaid',
     }).select().single()
@@ -1645,6 +1649,22 @@ export default function OrdersPage() {
                 })()}
               </div>
             </>)}
+
+            {/* 付款方式（共用） */}
+            <div className="space-y-2">
+              <Label>付款方式</Label>
+              <Select value={createPaymentMethod} onValueChange={v => setCreatePaymentMethod(v ?? '')}>
+                <SelectTrigger>
+                  <SelectValue placeholder="選擇付款方式（選填）" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">未設定</SelectItem>
+                  {paymentMethodOptions.map(o => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
             {/* 業主支出（共用） */}
             <div className="space-y-2">
