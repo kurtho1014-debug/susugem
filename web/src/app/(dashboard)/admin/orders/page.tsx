@@ -136,9 +136,11 @@ export default function OrdersPage() {
   const [createSaving, setCreateSaving] = useState(false)
 
   // 會員搜尋
-  const [memberSearch, setMemberSearch] = useState('')
   const [memberResults, setMemberResults] = useState<Member[]>([])
   const [memberSearchOpen, setMemberSearchOpen] = useState(false)
+
+  // 活動模式運費（可手動覆蓋）
+  const [createDeliveryFee, setCreateDeliveryFee] = useState('0')
 
   // 自由模式
   const [createMode, setCreateMode] = useState<'activity' | 'free'>('activity')
@@ -295,7 +297,6 @@ export default function OrdersPage() {
       email: m.email ?? prev.email,
       address: m.address ?? prev.address,
     }))
-    setMemberSearch('')
     setMemberResults([])
     setMemberSearchOpen(false)
   }
@@ -309,9 +310,9 @@ export default function OrdersPage() {
     setCreateQuantities({})
     setCreateDeliveryId('')
     setCreateCustomer({ name: '', phone: '', email: '', address: '', notes: '' })
-    setMemberSearch('')
     setMemberResults([])
     setMemberSearchOpen(false)
+    setCreateDeliveryFee('0')
     setCreateMode('activity')
     setFreeItems([])
     setFreeMaterials([])
@@ -341,7 +342,7 @@ export default function OrdersPage() {
   const handleCreateOrder = async () => {
     if (!createCustomer.name.trim() || !createCustomer.phone.trim() || !createDeliveryId || !createActivityId) return
     const selectedDm = createDeliveryMethods.find(d => d.id === createDeliveryId)
-    const deliveryFee = selectedDm?.custom_fee ?? selectedDm?.delivery_methods.default_fee ?? 0
+    const deliveryFee = parseFloat(createDeliveryFee) || 0
     const subtotal = createProducts.reduce((s, ap) => s + (createQuantities[ap.product_id] ?? 0) * ap.custom_price, 0)
     const total = subtotal + deliveryFee
     setCreateSaving(true)
@@ -792,47 +793,66 @@ export default function OrdersPage() {
             {/* 客戶資料（共用） */}
             <div className="space-y-3">
               <p className="text-sm font-semibold text-gray-500">客戶資料</p>
-
-              {/* 從會員導入 */}
-              <div className="relative">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                  <Input
-                    className="pl-9"
-                    placeholder="從會員搜尋並帶入資料（姓名或電話）"
-                    value={memberSearch}
-                    onChange={e => {
-                      setMemberSearch(e.target.value)
-                      setMemberSearchOpen(true)
-                      searchMembers(e.target.value)
-                    }}
-                    onFocus={() => memberSearch && setMemberSearchOpen(true)}
-                  />
-                </div>
-                {memberSearchOpen && memberResults.length > 0 && (
-                  <div className="absolute z-50 top-full mt-1 w-full bg-white border rounded-lg shadow-md max-h-48 overflow-y-auto">
-                    {memberResults.map(m => (
-                      <button key={m.id} type="button"
-                        className="w-full text-left px-3 py-2 hover:bg-gray-50 text-sm border-b last:border-0"
-                        onClick={() => importMember(m)}>
-                        <span className="font-medium">{m.name}</span>
-                        {m.phone && <span className="text-gray-400 ml-2">{m.phone}</span>}
-                        {m.email && <span className="text-gray-400 ml-2 text-xs">{m.email}</span>}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
               <div className="grid grid-cols-2 gap-3">
+                {/* 姓名 combobox */}
                 <div className="space-y-1.5">
                   <Label>姓名 *</Label>
-                  <Input placeholder="客戶姓名" value={createCustomer.name}
-                    onChange={e => setCreateCustomer({ ...createCustomer, name: e.target.value })} />
+                  <div className="relative">
+                    <Input
+                      placeholder="輸入或搜尋會員"
+                      value={createCustomer.name}
+                      onChange={e => {
+                        setCreateCustomer({ ...createCustomer, name: e.target.value })
+                        setMemberSearchOpen(true)
+                        searchMembers(e.target.value)
+                      }}
+                      onFocus={() => createCustomer.name && setMemberSearchOpen(true)}
+                      onBlur={() => setTimeout(() => setMemberSearchOpen(false), 150)}
+                    />
+                    {memberSearchOpen && memberResults.length > 0 && (
+                      <div className="absolute z-50 top-full mt-1 left-0 w-72 bg-white border rounded-lg shadow-md max-h-48 overflow-y-auto">
+                        {memberResults.map(m => (
+                          <button key={m.id} type="button"
+                            className="w-full text-left px-3 py-2 hover:bg-gray-50 text-sm border-b last:border-0"
+                            onMouseDown={e => e.preventDefault()}
+                            onClick={() => importMember(m)}>
+                            <span className="font-medium">{m.name}</span>
+                            {m.phone && <span className="text-gray-400 ml-2">{m.phone}</span>}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
+                {/* 電話 combobox */}
                 <div className="space-y-1.5">
                   <Label>電話 *</Label>
-                  <Input placeholder="09xx-xxx-xxx" value={createCustomer.phone}
-                    onChange={e => setCreateCustomer({ ...createCustomer, phone: e.target.value })} />
+                  <div className="relative">
+                    <Input
+                      placeholder="09xx-xxx-xxx"
+                      value={createCustomer.phone}
+                      onChange={e => {
+                        setCreateCustomer({ ...createCustomer, phone: e.target.value })
+                        setMemberSearchOpen(true)
+                        searchMembers(e.target.value)
+                      }}
+                      onFocus={() => createCustomer.phone && setMemberSearchOpen(true)}
+                      onBlur={() => setTimeout(() => setMemberSearchOpen(false), 150)}
+                    />
+                    {memberSearchOpen && memberResults.length > 0 && (
+                      <div className="absolute z-50 top-full mt-1 left-0 w-72 bg-white border rounded-lg shadow-md max-h-48 overflow-y-auto">
+                        {memberResults.map(m => (
+                          <button key={m.id} type="button"
+                            className="w-full text-left px-3 py-2 hover:bg-gray-50 text-sm border-b last:border-0"
+                            onMouseDown={e => e.preventDefault()}
+                            onClick={() => importMember(m)}>
+                            <span className="font-medium">{m.name}</span>
+                            {m.phone && <span className="text-gray-400 ml-2">{m.phone}</span>}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
               <div className="space-y-1.5">
@@ -903,18 +923,34 @@ export default function OrdersPage() {
                   <Label>物流方式 *</Label>
                   <div className="space-y-1.5">
                     {createDeliveryMethods.map(dm => {
-                      const fee = dm.custom_fee ?? dm.delivery_methods.default_fee
+                      const defaultFee = dm.custom_fee ?? dm.delivery_methods.default_fee
+                      const isSelected = createDeliveryId === dm.id
                       return (
                         <label key={dm.id}
                           className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors
-                            ${createDeliveryId === dm.id ? 'border-blue-500 bg-blue-50' : 'hover:bg-gray-50'}`}>
+                            ${isSelected ? 'border-blue-500 bg-blue-50' : 'hover:bg-gray-50'}`}>
                           <div className="flex items-center gap-2">
                             <input type="radio" name="createDelivery" value={dm.id}
-                              checked={createDeliveryId === dm.id}
-                              onChange={() => setCreateDeliveryId(dm.id)} />
+                              checked={isSelected}
+                              onChange={() => {
+                                setCreateDeliveryId(dm.id)
+                                setCreateDeliveryFee(String(defaultFee))
+                              }} />
                             <span className="text-sm">{dm.delivery_methods.name}</span>
                           </div>
-                          <span className="text-sm text-gray-500">{fee === 0 ? '免運' : `NT$ ${fee}`}</span>
+                          {isSelected ? (
+                            <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                              <span className="text-xs text-gray-400">NT$</span>
+                              <Input
+                                type="number" min={0} className="w-20 h-7 text-sm text-right"
+                                value={createDeliveryFee}
+                                onChange={e => setCreateDeliveryFee(e.target.value)}
+                                onMouseDown={e => e.stopPropagation()}
+                              />
+                            </div>
+                          ) : (
+                            <span className="text-sm text-gray-500">{defaultFee === 0 ? '免運' : `NT$ ${defaultFee}`}</span>
+                          )}
                         </label>
                       )
                     })}
@@ -926,8 +962,7 @@ export default function OrdersPage() {
                 <div className="bg-gray-50 rounded-lg px-4 py-3 space-y-1 text-sm">
                   {(() => {
                     const subtotal = createProducts.reduce((s, ap) => s + (createQuantities[ap.product_id] ?? 0) * ap.custom_price, 0)
-                    const dm = createDeliveryMethods.find(d => d.id === createDeliveryId)
-                    const fee = dm?.custom_fee ?? dm?.delivery_methods.default_fee ?? 0
+                    const fee = parseFloat(createDeliveryFee) || 0
                     return (<>
                       <div className="flex justify-between text-gray-500">
                         <span>商品小計</span><span>NT$ {subtotal.toLocaleString()}</span>
