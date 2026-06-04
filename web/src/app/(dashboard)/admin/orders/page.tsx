@@ -117,7 +117,8 @@ const paymentMethodOptions = [
   { value: 'transfer',  label: '銀行轉帳' },
   { value: 'line_pay',  label: 'LINE Pay' },
   { value: 'cod',       label: '貨到付款' },
-  { value: 'shopee',    label: '蝦皮' },
+  { value: 'shopee',    label: '蝦皮付款' },
+  { value: 'website',   label: '官網付款' },
 ] as const
 
 const paymentStatusOptions = [
