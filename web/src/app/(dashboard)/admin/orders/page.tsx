@@ -137,7 +137,7 @@ export default function OrdersPage() {
 
   // 會員搜尋
   const [memberResults, setMemberResults] = useState<Member[]>([])
-  const [memberSearchOpen, setMemberSearchOpen] = useState(false)
+  const [memberActiveField, setMemberActiveField] = useState<'name' | 'phone' | null>(null)
 
   // 活動模式運費（可手動覆蓋）
   const [createDeliveryFee, setCreateDeliveryFee] = useState('0')
@@ -298,7 +298,7 @@ export default function OrdersPage() {
       address: m.address ?? prev.address,
     }))
     setMemberResults([])
-    setMemberSearchOpen(false)
+    setMemberActiveField(null)
   }
 
   // 新增訂單
@@ -311,7 +311,7 @@ export default function OrdersPage() {
     setCreateDeliveryId('')
     setCreateCustomer({ name: '', phone: '', email: '', address: '', notes: '' })
     setMemberResults([])
-    setMemberSearchOpen(false)
+    setMemberActiveField(null)
     setCreateDeliveryFee('0')
     setCreateMode('free')
     setFreeItems([])
@@ -803,13 +803,13 @@ export default function OrdersPage() {
                       value={createCustomer.name}
                       onChange={e => {
                         setCreateCustomer({ ...createCustomer, name: e.target.value })
-                        setMemberSearchOpen(true)
+                        setMemberActiveField('name')
                         searchMembers(e.target.value)
                       }}
-                      onFocus={() => createCustomer.name && setMemberSearchOpen(true)}
-                      onBlur={() => setTimeout(() => setMemberSearchOpen(false), 150)}
+                      onFocus={() => { if (createCustomer.name) { setMemberActiveField('name'); searchMembers(createCustomer.name) } }}
+                      onBlur={() => setTimeout(() => setMemberActiveField(null), 150)}
                     />
-                    {memberSearchOpen && memberResults.length > 0 && (
+                    {memberActiveField === 'name' && memberResults.length > 0 && (
                       <div className="absolute z-50 top-full mt-1 left-0 w-72 bg-white border rounded-lg shadow-md max-h-48 overflow-y-auto">
                         {memberResults.map(m => (
                           <button key={m.id} type="button"
@@ -833,13 +833,13 @@ export default function OrdersPage() {
                       value={createCustomer.phone}
                       onChange={e => {
                         setCreateCustomer({ ...createCustomer, phone: e.target.value })
-                        setMemberSearchOpen(true)
+                        setMemberActiveField('phone')
                         searchMembers(e.target.value)
                       }}
-                      onFocus={() => createCustomer.phone && setMemberSearchOpen(true)}
-                      onBlur={() => setTimeout(() => setMemberSearchOpen(false), 150)}
+                      onFocus={() => { if (createCustomer.phone) { setMemberActiveField('phone'); searchMembers(createCustomer.phone) } }}
+                      onBlur={() => setTimeout(() => setMemberActiveField(null), 150)}
                     />
-                    {memberSearchOpen && memberResults.length > 0 && (
+                    {memberActiveField === 'phone' && memberResults.length > 0 && (
                       <div className="absolute z-50 top-full mt-1 left-0 w-72 bg-white border rounded-lg shadow-md max-h-48 overflow-y-auto">
                         {memberResults.map(m => (
                           <button key={m.id} type="button"
