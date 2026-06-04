@@ -51,6 +51,8 @@ type Order = {
   subtotal: number
   total: number
   notes: string | null
+  extra_expense: number | null
+  extra_expense_note: string | null
   created_at: string
   activities?: { name: string } | null
   delivery_methods?: { name: string } | null
@@ -135,6 +137,7 @@ export default function OrdersPage() {
   const [createQuantities, setCreateQuantities] = useState<Record<string, number>>({})
   const [createDeliveryId, setCreateDeliveryId] = useState('')
   const [createCustomer, setCreateCustomer] = useState({ name: '', phone: '', email: '', address: '', notes: '' })
+  const [createExpense, setCreateExpense] = useState({ amount: '', note: '' })
   const [createSaving, setCreateSaving] = useState(false)
 
   // 會員搜尋
@@ -357,6 +360,7 @@ export default function OrdersPage() {
     setCreateQuantities({})
     setCreateDeliveryId('')
     setCreateCustomer({ name: '', phone: '', email: '', address: '', notes: '' })
+    setCreateExpense({ amount: '', note: '' })
     setMemberResults([])
     setMemberActiveField(null)
     setCreateDeliveryFee('0')
@@ -403,6 +407,8 @@ export default function OrdersPage() {
       delivery_fee: deliveryFee,
       subtotal, total,
       notes: createCustomer.notes.trim() || null,
+      extra_expense: parseFloat(createExpense.amount) || null,
+      extra_expense_note: createExpense.note.trim() || null,
       order_status: 'pending',
       payment_status: 'unpaid',
     }).select().single()
@@ -442,6 +448,8 @@ export default function OrdersPage() {
       delivery_fee: deliveryFee,
       subtotal, total,
       notes: createCustomer.notes.trim() || null,
+      extra_expense: parseFloat(createExpense.amount) || null,
+      extra_expense_note: createExpense.note.trim() || null,
       order_status: 'pending',
       payment_status: 'unpaid',
     }).select().single()
@@ -725,6 +733,42 @@ export default function OrdersPage() {
                     onClick={() => {
                       const val = (document.getElementById('tracking') as HTMLInputElement).value
                       updateOrder({ tracking_number: val || null })
+                    }}
+                  >
+                    儲存
+                  </Button>
+                </div>
+              </div>
+
+              {/* 業主支出 */}
+              <div className="space-y-2">
+                <Label>業主支出</Label>
+                <div className="flex gap-2">
+                  <div className="relative w-32">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">NT$</span>
+                    <Input
+                      type="number" min={0} className="pl-9"
+                      placeholder="0"
+                      defaultValue={selectedOrder.extra_expense ?? ''}
+                      id="extra_expense"
+                    />
+                  </div>
+                  <Input
+                    className="flex-1"
+                    placeholder="說明（例：貼運費 60）"
+                    defaultValue={selectedOrder.extra_expense_note ?? ''}
+                    id="extra_expense_note"
+                  />
+                  <Button
+                    variant="outline"
+                    disabled={saving}
+                    onClick={() => {
+                      const amt = (document.getElementById('extra_expense') as HTMLInputElement).value
+                      const note = (document.getElementById('extra_expense_note') as HTMLInputElement).value
+                      updateOrder({
+                        extra_expense: parseFloat(amt) || null,
+                        extra_expense_note: note.trim() || null,
+                      })
                     }}
                   >
                     儲存
@@ -1251,6 +1295,28 @@ export default function OrdersPage() {
                 })()}
               </div>
             </>)}
+
+            {/* 業主支出（共用） */}
+            <div className="space-y-2">
+              <Label>業主支出</Label>
+              <div className="flex gap-2">
+                <div className="relative w-32">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">NT$</span>
+                  <Input
+                    type="number" min={0} className="pl-9"
+                    placeholder="0"
+                    value={createExpense.amount}
+                    onChange={e => setCreateExpense({ ...createExpense, amount: e.target.value })}
+                  />
+                </div>
+                <Input
+                  className="flex-1"
+                  placeholder="說明（例：貼運費 60）"
+                  value={createExpense.note}
+                  onChange={e => setCreateExpense({ ...createExpense, note: e.target.value })}
+                />
+              </div>
+            </div>
 
             {/* 備註（共用） */}
             <div className="space-y-1.5">

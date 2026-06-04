@@ -11,8 +11,9 @@ type MonthlyFinance = {
   deliveryRevenue: number
   totalRevenue: number
   productCost: number
-  productCostCoverage: number  // 0~1，有 cost_price 的訂單比例
+  productCostCoverage: number
   materialCost: number
+  extraExpense: number
   netProfit: number
 }
 
@@ -46,6 +47,7 @@ export default function AdminDashboard() {
         { count: activeActivityCount },
         { data: monthlyOrders },
       ] = await Promise.all([
+
         supabase.from('orders')
           .select('*', { count: 'exact', head: true })
           .gte('created_at', startOfMonth)
@@ -60,7 +62,7 @@ export default function AdminDashboard() {
           .eq('status', 'active'),
         supabase.from('orders')
           .select(`
-            id, subtotal, total, delivery_fee,
+            id, subtotal, total, delivery_fee, extra_expense,
             order_items ( quantity, unit_price, subtotal, products ( cost_price ) ),
             order_materials ( quantity, materials ( unit_price ) )
           `)
@@ -82,10 +84,12 @@ export default function AdminDashboard() {
         let coveredItems = 0
         let totalItems = 0
         let materialCost = 0
+        let extraExpense = 0
 
         for (const order of monthlyOrders) {
           productRevenue += order.subtotal ?? 0
           deliveryRevenue += order.delivery_fee ?? 0
+          extraExpense += order.extra_expense ?? 0
 
           for (const item of (order.order_items as any[]) ?? []) {
             totalItems++
@@ -111,7 +115,8 @@ export default function AdminDashboard() {
           productCost,
           productCostCoverage: totalItems > 0 ? coveredItems / totalItems : 1,
           materialCost,
-          netProfit: totalRevenue - productCost - materialCost,
+          extraExpense,
+          netProfit: totalRevenue - productCost - materialCost - extraExpense,
         })
       }
 
@@ -209,9 +214,13 @@ export default function AdminDashboard() {
                       <span className="text-gray-500">包材成本</span>
                       <span className="font-medium">{fmt(finance.materialCost)}</span>
                     </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">業主支出</span>
+                      <span className="font-medium">{fmt(finance.extraExpense)}</span>
+                    </div>
                     <div className="flex justify-between pt-1.5 border-t font-semibold">
                       <span>總成本</span>
-                      <span>{fmt(finance.productCost + finance.materialCost)}</span>
+                      <span>{fmt(finance.productCost + finance.materialCost + finance.extraExpense)}</span>
                     </div>
                   </div>
                 </div>
