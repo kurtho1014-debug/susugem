@@ -8,8 +8,6 @@ import { Package, ShoppingCart, Users, ClipboardList, TrendingUp } from 'lucide-
 type MonthlyFinance = {
   orderCount: number
   productRevenue: number
-  deliveryRevenue: number
-  totalRevenue: number
   productCost: number
   productCostCoverage: number
   materialCost: number
@@ -79,7 +77,6 @@ export default function AdminDashboard() {
 
       if (monthlyOrders) {
         let productRevenue = 0
-        let deliveryRevenue = 0
         let productCost = 0
         let coveredItems = 0
         let totalItems = 0
@@ -88,7 +85,6 @@ export default function AdminDashboard() {
 
         for (const order of monthlyOrders) {
           productRevenue += order.subtotal ?? 0
-          deliveryRevenue += order.delivery_fee ?? 0
           extraExpense += order.extra_expense ?? 0
 
           for (const item of (order.order_items as any[]) ?? []) {
@@ -106,17 +102,14 @@ export default function AdminDashboard() {
           }
         }
 
-        const totalRevenue = productRevenue + deliveryRevenue
         setFinance({
           orderCount: monthlyOrders.length,
           productRevenue,
-          deliveryRevenue,
-          totalRevenue,
           productCost,
           productCostCoverage: totalItems > 0 ? coveredItems / totalItems : 1,
           materialCost,
           extraExpense,
-          netProfit: totalRevenue - productCost - materialCost - extraExpense,
+          netProfit: productRevenue - productCost - materialCost - extraExpense,
         })
       }
 
@@ -180,18 +173,11 @@ export default function AdminDashboard() {
                 <div className="space-y-2">
                   <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">收入</p>
                   <div className="space-y-1.5 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">商品收入</span>
-                      <span className="font-medium">{fmt(finance.productRevenue)}</span>
+                    <div className="flex justify-between pt-1.5 font-semibold">
+                      <span>商品收入</span>
+                      <span>{fmt(finance.productRevenue)}</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">運費收入</span>
-                      <span className="font-medium">{fmt(finance.deliveryRevenue)}</span>
-                    </div>
-                    <div className="flex justify-between pt-1.5 border-t font-semibold">
-                      <span>總收入</span>
-                      <span>{fmt(finance.totalRevenue)}</span>
-                    </div>
+                    <p className="text-xs text-gray-400">運費為代收轉付，不計入收入</p>
                   </div>
                 </div>
 
