@@ -137,7 +137,7 @@ export default function MembersPage() {
               <TableHead>電話</TableHead>
               <TableHead>Email</TableHead>
               <TableHead>LINE</TableHead>
-              <TableHead>慣用門市</TableHead>
+              <TableHead>慣用門市 / 地址</TableHead>
               <TableHead>狀態</TableHead>
               <TableHead>建立時間</TableHead>
               <TableHead></TableHead>
@@ -154,7 +154,7 @@ export default function MembersPage() {
                 <TableCell>{m.phone ?? '—'}</TableCell>
                 <TableCell>{m.email ?? '—'}</TableCell>
                 <TableCell>{m.line_id ?? '—'}</TableCell>
-                <TableCell>{m.preferred_store ?? '—'}</TableCell>
+                <TableCell>{m.preferred_store ?? m.address ?? '—'}</TableCell>
                 <TableCell>
                   <Badge variant={m.is_registered ? 'default' : 'outline'}>
                     {m.is_registered ? '已建檔' : '未建檔'}
