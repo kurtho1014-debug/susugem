@@ -23,13 +23,14 @@ type Member = {
   line_id: string | null
   ig_id: string | null
   address: string | null
+  preferred_store: string | null
   is_registered: boolean
   notes: string | null
   created_at: string
 }
 
 const emptyForm = {
-  name: '', phone: '', email: '', line_id: '', ig_id: '', address: '', notes: '', is_registered: false,
+  name: '', phone: '', email: '', line_id: '', ig_id: '', address: '', preferred_store: '', notes: '', is_registered: false,
 }
 
 export default function MembersPage() {
@@ -71,6 +72,7 @@ export default function MembersPage() {
       line_id: m.line_id ?? '',
       ig_id: m.ig_id ?? '',
       address: m.address ?? '',
+      preferred_store: m.preferred_store ?? '',
       notes: m.notes ?? '',
       is_registered: m.is_registered,
     })
@@ -94,6 +96,7 @@ export default function MembersPage() {
       line_id: form.line_id || null,
       ig_id: form.ig_id || null,
       address: form.address || null,
+      preferred_store: form.preferred_store || null,
       notes: form.notes || null,
       is_registered: form.is_registered,
     }
@@ -134,6 +137,7 @@ export default function MembersPage() {
               <TableHead>電話</TableHead>
               <TableHead>Email</TableHead>
               <TableHead>LINE</TableHead>
+              <TableHead>慣用門市</TableHead>
               <TableHead>狀態</TableHead>
               <TableHead>建立時間</TableHead>
               <TableHead></TableHead>
@@ -141,15 +145,16 @@ export default function MembersPage() {
           </TableHeader>
           <TableBody>
             {loading ? (
-              <TableRow><TableCell colSpan={7} className="text-center py-10 text-gray-400">載入中...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} className="text-center py-10 text-gray-400">載入中...</TableCell></TableRow>
             ) : members.length === 0 ? (
-              <TableRow><TableCell colSpan={7} className="text-center py-10 text-gray-400">尚無會員</TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} className="text-center py-10 text-gray-400">尚無會員</TableCell></TableRow>
             ) : members.map(m => (
               <TableRow key={m.id}>
                 <TableCell className="font-medium">{m.name}</TableCell>
                 <TableCell>{m.phone ?? '—'}</TableCell>
                 <TableCell>{m.email ?? '—'}</TableCell>
                 <TableCell>{m.line_id ?? '—'}</TableCell>
+                <TableCell>{m.preferred_store ?? '—'}</TableCell>
                 <TableCell>
                   <Badge variant={m.is_registered ? 'default' : 'outline'}>
                     {m.is_registered ? '已建檔' : '未建檔'}
@@ -199,6 +204,10 @@ export default function MembersPage() {
             <div className="space-y-2">
               <Label>Email</Label>
               <Input type="email" placeholder="email@example.com" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} />
+            </div>
+            <div className="space-y-2">
+              <Label>慣用門市</Label>
+              <Input placeholder="例：7-11 川越 / 全家 新富台" value={form.preferred_store} onChange={e => setForm({ ...form, preferred_store: e.target.value })} />
             </div>
             <div className="space-y-2">
               <Label>地址</Label>

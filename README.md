@@ -29,6 +29,12 @@ susu/
         └── types/           # TypeScript 型別
 ```
 
+## 帳號存在
+suppabase 連動github
+只要本地push 上去，就能更新web
+vercel, github 帳號 kurt1014
+
+
 ## 啟動步驟
 
 ### 1. 啟動 Supabase
