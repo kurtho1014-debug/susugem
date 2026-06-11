@@ -36,6 +36,7 @@ type Member = {
   phone: string | null
   email: string | null
   address: string | null
+  preferred_store: string | null
 }
 
 type Order = {
@@ -461,7 +462,7 @@ export default function OrdersPage() {
     if (!q.trim()) { setMemberResults([]); return }
     const { data } = await supabase
       .from('members')
-      .select('id, name, phone, email, address')
+      .select('id, name, phone, email, address, preferred_store')
       .or(`name.ilike.%${q}%,phone.ilike.%${q}%`)
       .limit(8)
     if (data) setMemberResults(data)
@@ -473,7 +474,7 @@ export default function OrdersPage() {
       name: m.name,
       phone: m.phone ?? prev.phone,
       email: m.email ?? prev.email,
-      address: m.address ?? prev.address,
+      address: m.address ?? m.preferred_store ?? prev.address,
     }))
     setMemberResults([])
     setMemberActiveField(null)
